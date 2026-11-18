@@ -33,3 +33,4 @@ Thumbs.db
 
 # Docker env persistence (runtime-generated)
 omnitrix_docker_env_*
+.vercel
