@@ -1,0 +1,35 @@
+# Secret / sensitive files - DO NOT LEAK
+.env
+.env.*
+*.env
+*.secret
+*.key
+*.pem
+secrets*
+secret*
+*.credential
+credentials*
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+
+# Node / build
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local dev
+*.log
+.local/
+.vercel/
+.vercel-build/
+
+# Docker env persistence (runtime-generated)
+omnitrix_docker_env_*

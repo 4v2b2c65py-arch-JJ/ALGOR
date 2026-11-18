@@ -1,0 +1,2395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Omnitrix Holographic Avatar Projector</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #050508;
+    color: #0f0;
+    font-family: 'Courier New', Courier, monospace;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+  #canvas-container {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    z-index: 1;
+  }
+  #loading {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: #0f0; font-size: 1.2rem;
+    z-index: 10; letter-spacing: 2px;
+  }
+  /* HUD overlay */
+  .hud {
+    position: absolute; pointer-events: none;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    z-index: 20;
+  }
+  .panel {
+    position: absolute; pointer-events: auto;
+    background: rgba(0, 10, 0, 0.85);
+    border: 1px solid #0f0;
+    box-shadow: 0 0 15px #0f0, inset 0 0 15px #0f0;
+    color: #0f0;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+  }
+  .panel h2 {
+    background: #0f0; color: #000;
+    padding: 6px 10px; font-size: 0.85rem;
+    letter-spacing: 1px; border-bottom: 1px solid #000;
+    margin: 0;
+  }
+  .panel-content { padding: 10px; font-size: 0.75rem; line-height: 1.4; }
+  .row { margin: 6px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .label { color: #0a0; min-width: 90px; user-select: none; }
+  .value { color: #fff; flex: 1; min-width: 110px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border: 1px solid #0f0;
+    border-radius: 3px; margin-right: 6px; cursor: default;
+    font-size: 0.7rem; letter-spacing: 0.5px;
+  }
+  .badge.active { background: #0f0; color: #000; box-shadow: 0 0 8px #0f0; }
+  .badge.offline { color: #555; border-color: #555; }
+  .badge.online { color: #0f0; border-color: #0f0; }
+  .badge.connecting { color: #ff0; border-color: #ff0; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  button.omni-btn {
+    background: transparent; border: 1px solid #0f0;
+    color: #0f0; font-family: inherit; font-size: 0.7rem;
+    padding: 6px 14px; cursor: pointer; text-transform: uppercase;
+    letter-spacing: 1px; transition: all 0.2s;
+  }
+  button.omni-btn:hover { background: #0f0; color: #000; box-shadow: 0 0 12px #0f0; }
+  button.omni-btn.selected { background: #0f0; color: #000; box-shadow: 0 0 14px #0f0; }
+  button.omni-btn:disabled { opacity: 0.4; cursor: not-allowed; border-color: #333; color: #555; }
+  .btn-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .mcp-msg { font-size: 0.65rem; color: #0a0; margin: 2px 0; word-break: break-all; }
+  .mcp-msg.in { color: #0f0; }
+  .mcp-msg.out { color: #ff0; }
+  .mcp-msg.err { color: #f00; }
+  .small-note { font-size: 0.6rem; color: #5a5; margin-top: 8px; border-top: 1px solid #030; padding-top: 6px; }
+
+  /* Top-left status */
+  #top-bar { position: absolute; top: 12px; left: 12px; z-index: 25; }
+  /* Bottom-left avatar library */
+  #avatar-lib {
+    bottom: 12px; left: 12px; width: 260px; max-height: 70vh;
+    overflow-y: auto;
+  }
+  /* Right panel: MCP */
+  #mcp-panel {
+    top: 12px; right: 12px; width: 320px; height: 390px;
+  }
+  /* Bottom-right controls */
+  #ctrl-panel {
+    bottom: 330px; right: 12px; width: 260px; height: 200px;
+  }
+  /* Mechanism panel */
+  #mech-panel {
+    bottom: 12px; right: 12px; width: 360px; height: 300px;
+  }
+  /* Touchscreen command interface (right side, above mech) */
+  #touch-panel {
+    top: 410px; right: 12px; width: 360px; height: 250px;
+  }
+  /* Machine driver stack panel */
+  #drv-panel {
+    top: 895px; right: 12px; width: 360px; height: 280px;
+  }
+  .touch-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+  .touch-btn {
+    background: rgba(0,20,0,0.6); border: 1px solid #0f0; color: #0f0;
+    font-family: inherit; font-size: 0.62rem; padding: 7px 4px; cursor: pointer;
+    text-transform: uppercase; letter-spacing: 0.5px; border-radius: 3px;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  .touch-btn:active { background: #0f0; color: #000; box-shadow: 0 0 10px #0f0; }
+  .touch-btn.primary { border-color: #0ff; color: #0ff; }
+  .touch-btn.primary:active { background: #0ff; color: #000; box-shadow: 0 0 14px #0ff; }
+  .cmd-log { height: 95px; overflow-y: auto; background: #000; border: 1px solid #030;
+             padding: 5px; font-size: 0.6rem; color: #0a0; margin-top: 6px; font-family: inherit; }
+  .cmd-log .entry { margin: 2px 0; word-break: break-all; }
+  .cmd-log .exec { color: #0f0; }
+  .cmd-log .result { color: #0ff; }
+  .cmd-log .err { color: #f00; }
+  /* Driver stack panel styles */
+  .drv-level { margin: 4px 0; font-size: 0.65rem; color: #0a0; }
+  .drv-list { max-height: 90px; overflow-y: auto; background: #000; border: 1px solid #030; padding: 4px; margin: 4px 0; font-size: 0.62rem; }
+  .drv-item { padding: 2px 4px; border-bottom: 1px solid #011; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+  .drv-item:hover { background: rgba(0,255,0,0.08); }
+  .drv-item.selected { background: rgba(0,255,0,0.2); color: #fff; }
+  .drv-status { font-size: 0.55rem; padding: 1px 5px; border: 1px solid; border-radius: 3px; }
+  .drv-status.active { color: #0f0; border-color: #0f0; }
+  .drv-status.standby { color: #ff0; border-color: #ff0; }
+  .drv-formed { font-family: inherit; font-size: 0.6rem; background: #000; border: 1px solid #0f0; color: #0ff; padding: 4px 6px; margin: 4px 0; white-space: pre-wrap; word-break: break-all; min-height: 24px; }
+  .drv-docker { font-size: 0.58rem; background: #000; border: 1px solid #030; padding: 4px 6px; margin-top: 4px; max-height: 70px; overflow-y: auto; color: #0a0; white-space: pre-wrap; word-break: break-all; }
+  .drv-btn-row { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+  /* Ark monitor dashboard */
+  #ark-panel {
+    top: 1190px; right: 12px; width: 360px; height: 200px;
+  }
+  .ark-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 6px; }
+  .ark-box { background: #000; border: 1px solid #0f0; padding: 5px; font-size: 0.6rem; color: #0a0; min-height: 60px; overflow: hidden; }
+  .ark-box h4 { margin: 0 0 4px 0; color: #0f0; font-size: 0.65rem; border-bottom: 1px solid #011; padding-bottom: 2px; }
+  .ark-pkt { font-family: inherit; font-size: 0.55rem; margin: 1px 0; color: #0ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ark-pkt.krnl { color: #0f0; }
+  .ark-pkt.tick { color: #ff0; }
+  .ark-pkt.docker { color: #0ff; }
+  .ark-pkt.sort { color: #f0f; }
+  .ark-val { font-family: inherit; font-size: 0.6rem; color: #fff; margin: 2px 0; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 8px; background: #000; }
+  ::-webkit-scrollbar-thumb { background: #0f0; }
+
+  /* Hologram scanline overlay */
+  #scanlines {
+    position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: linear-gradient(rgba(18, 16, 0, 0) 50%, rgba(0, 40, 0, 0.1) 50%),
+                linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+    background-size: 100% 4px, 3px 100%;
+    z-index: 15; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">Initializing Omnitrix Core...</div>
+<div id="canvas-container"></div>
+<div id="scanlines"></div>
+
+<!-- Top status bar -->
+<div id="top-bar" class="hud">
+  <div class="panel" style="width: 320px; min-width: 200px;">
+    <div class="panel-content">
+      <div class="row"><span class="label">SYSTEM</span><span id="sys-status" class="value">OMNITRIX v3.1</span></div>
+      <div class="row"><span class="label">AXIS MODE</span><span id="axis-mode" class="value">FULL 3-DOF</span></div>
+      <div class="row"><span class="label">PROJECTION</span><span id="proj-status" class="value badge offline">IDLE</span></div>
+      <div class="row"><span class="label">MCP LINK</span><span id="mcp-link" class="value badge offline">DISCONNECTED</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Avatar library (context blocks) -->
+<div id="avatar-lib" class="panel">
+  <h2>CONTEXT BLOCKS / AVATARS</h2>
+  <div class="panel-content" id="avatar-list">
+    <div style="color:#555;font-size:0.65rem;">Loading avatars...</div>
+  </div>
+  <div class="small-note">Click an avatar to project hologram. Raw polygon mode toggles wireframe vertices.</div>
+</div>
+
+<!-- MCP panel -->
+<div id="mcp-panel" class="panel">
+  <h2>MCP &rarr; LOCAL MODEL</h2>
+  <div class="panel-content">
+    <div class="row">
+      <span class="label">ENDPOINT</span>
+      <input id="mcp-endpoint" type="text" value="ws://localhost:3001/mcp" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+    </div>
+    <div class="row">
+      <button class="omni-btn" id="mcp-connect">CONNECT</button>
+      <button class="omni-btn" id="mcp-disconnect" disabled>DISCONNECT</button>
+    </div>
+    <div class="row"><span class="label">STATE</span><span id="mcp-state" class="value badge offline">idle</span></div>
+    <div class="row"><span class="label">TOOLS</span><span id="mcp-tools" class="value">-</span></div>
+    <div style="margin-top:8px;"><span class="label">CALL TOOL</span></div>
+    <div class="btn-row" id="mcp-tool-buttons"></div>
+    <div style="margin-top:6px;"><span class="label">LOG</span></div>
+    <div id="mcp-log" style="height:150px;overflow-y:auto;background:#000;border:1px solid #030;padding:4px;font-size:0.6rem;color:#0a0;"></div>
+    <div style="margin-top:6px;"><span class="label">RAW RESPONSE</span></div>
+    <div id="mcp-raw" style="height:60px;overflow-y:auto;background:#000;border:1px solid #030;padding:4px;font-size:0.6rem;color:#0a0;white-space:pre-wrap;"></div>
+  </div>
+</div>
+
+<!-- Control panel -->
+<div id="ctrl-panel" class="panel">
+  <h2>HOLOGRAM CONTROLS</h2>
+  <div class="panel-content">
+    <div class="row">
+      <span class="label">MODE</span>
+      <button class="omni-btn" id="btn-solid">SOLID</button>
+      <button class="omni-btn" id="btn-wire">WIRE</button>
+      <button class="omni-btn selected" id="btn-holo">HOLO</button>
+    </div>
+    <div class="row">
+      <span class="label">ROTATE AUTO</span>
+      <button class="omni-btn" id="btn-autorot">ON</button>
+    </div>
+    <div class="row">
+      <span class="label">STORE SLOT</span>
+      <span id="slot-mode-badge" style="color:#ff0;font-size:0.65rem;">ALPHA</span>
+      <select id="store-slot" style="background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;"></select>
+      <button class="omni-btn" id="btn-store">STORE</button>
+      <button class="omni-btn" id="btn-recall">RECALL</button>
+    </div>
+    <div class="row">
+      <span class="label">RESET VIEW</span>
+      <button class="omni-btn" id="btn-reset">RESET</button>
+    </div>
+    <div class="small-note">Orbit = full axis movement. Drag = rotate, Scroll = zoom, Right-click = pan.</div>
+  </div>
+</div>
+
+<!-- Mechanism panel -->
+<div id="mech-panel" class="panel">
+  <h2>INTERNAL MECHANISM — HILIOSPHERUMANITE</h2>
+  <div class="panel-content">
+    <div class="row"><span class="label">HILIO</span><input id="mech-h" type="number" value="1" step="0.1" style="width:60px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;"></div>
+    <div class="row"><span class="label">SPHERIUM</span><input id="mech-s" type="number" value="1" step="0.1" style="width:60px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;"></div>
+    <div class="row"><span class="label">MANITE</span><input id="mech-m" type="number" value="1" step="0.1" style="width:60px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;"></div>
+    <div class="btn-row" style="margin-top:6px;">
+      <button class="omni-btn" id="mech-compute">COMPUTE H/O</button>
+      <button class="omni-btn" id="mech-resonate">RESONANCE OFF</button>
+    </div>
+    <div class="row"><span class="label">FREQ HZ</span><input id="mech-hz" type="number" value="20000" style="width:70px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;"></div>
+    <div class="row"><span class="label">FREQ HEX</span><input id="mech-hex" type="text" value="0xzK4frozE203" style="width:120px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;"></div>
+    <div class="btn-row" style="margin-top:6px;">
+      <button class="omni-btn" id="mech-bell">VACUUM DB + BELL</button>
+      <button class="omni-btn" id="mech-capture">COHERENT CAPTURE OFF</button>
+    </div>
+    <div class="row"><span class="label">RIN</span><input id="mech-rin" type="number" value="0" step="1" style="width:60px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;"></div>
+    <div class="row" style="margin-top:4px;"><span class="label">STATE</span><span id="mech-out" class="value" style="white-space:pre-wrap;font-size:0.6rem;">idle</span></div>
+    <div class="small-note">H=f(h,s,m) · O=H+S+M+Ihs+Ism+IHM · Rout=Rin•C · Wordless verbalism / Resonance</div>
+  </div>
+</div>
+
+<!-- Touchscreen command interface -->
+<div id="touch-panel" class="panel">
+  <h2>HOLOGRAPHIC TOUCHSCREEN — MCP CMD</h2>
+  <div class="panel-content">
+    <div class="touch-grid">
+      <button class="touch-btn primary" data-cmd="project_heatblast">HEATBLAST</button>
+      <button class="touch-btn primary" data-cmd="project_fourarms">FOURARMS</button>
+      <button class="touch-btn primary" data-cmd="project_xlr8">XLR8</button>
+      <button class="touch-btn primary" data-cmd="project_diamondhead">DIAMOND</button>
+      <button class="touch-btn primary" data-cmd="project_ghostfreak">GHOST</button>
+      <button class="touch-btn" data-cmd="mode_solid">SOLID</button>
+      <button class="touch-btn" data-cmd="mode_wire">WIRE</button>
+      <button class="touch-btn" data-cmd="mode_holo">HOLO</button>
+      <button class="touch-btn" data-cmd="slot_mode">SLOT MODE</button>
+      <button class="touch-btn" data-cmd="autorotate">AUTO ROT</button>
+      <button class="touch-btn" data-cmd="mech_compute">MECH COMPUTE</button>
+      <button class="touch-btn" data-cmd="mech_resonate">RESONANCE</button>
+      <button class="touch-btn" data-cmd="mech_bell">VACUUM BELL</button>
+      <button class="touch-btn" data-cmd="mech_capture">COHERENT CAP</button>
+      <button class="touch-btn primary" data-cmd="reset_view">RESET VIEW</button>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <span class="label">CMD</span>
+      <input id="touch-cmd-input" type="text" placeholder="e.g. project_heatblast" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="btn-touch-exec">EXEC</button>
+    </div>
+    <div class="cmd-log" id="touch-cmd-log"></div>
+    <div class="small-note">Model executes commands via MCP tools/call. Touch buttons = local exec.</div>
+  </div>
+</div>
+
+<!-- Machine driver stack panel -->
+<div id="drv-panel" class="panel">
+  <h2>MACHINE DRIVER STACK</h2>
+  <div class="panel-content">
+    <div class="row"><span class="label">LEVEL</span>
+      <select id="drv-level" style="background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;"></select>
+    </div>
+    <div class="drv-level" id="drv-level-desc"></div>
+    <div class="drv-list" id="drv-list"></div>
+    <div class="row" style="margin-top:4px;"><span class="label">ARGS</span><input id="drv-args" type="text" placeholder="args" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;"></div>
+    <div class="drv-btn-row">
+      <button class="omni-btn" id="drv-form">FORM</button>
+      <button class="omni-btn primary" id="drv-exec">EXEC</button>
+    </div>
+    <div class="drv-formed" id="drv-formed">—</div>
+    <div class="drv-docker" id="drv-docker"></div>
+    <div class="drv-btn-row">
+      <button class="omni-btn" id="drv-docker-save">SAVE DOCKER ENV</button>
+      <button class="omni-btn" id="drv-docker-load">LOAD</button>
+      <button class="omni-btn" id="drv-docker-reset">RESET</button>
+    </div>
+    <div class="drv-formed" id="drv-prox"></div>
+    <div class="drv-docker" id="drv-gittrace"></div>
+    <div class="drv-level" id="drv-rc-status">RC: disconnected</div>
+    <div class="drv-level" id="drv-spectral-status">SPECTRAL: off | max 10KXFOLDS | rule: persists outside Kilometertessorialcubits</div>
+    <div class="drv-level" id="drv-qbit-status">QBIT: off | alien_x level 0 | fast launch not ready</div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <button class="omni-btn" id="drv-rc-connect">RC CONNECT</button>
+      <button class="omni-btn" id="drv-rc-disconnect" disabled>RC DISCONNECT</button>
+      <button class="omni-btn primary" id="drv-melencoly">MELANCOLY @DREAMSHELL</button>
+      <button class="omni-btn" id="drv-spectral">SPECTRAL 10KXFOLDS</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">FOLD VAL</span>
+      <input id="drv-fold-val" type="number" value="1000" style="width:70px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-fold">FOLD</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">LOCK X</span><input id="drv-lock-x" type="number" value="0" style="width:50px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <span class="label">LOCK Y</span><input id="drv-lock-y" type="number" value="0" style="width:50px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <span class="label">LOCK Z</span><input id="drv-lock-z" type="number" value="0" style="width:50px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <span class="label">LOCK S</span><input id="drv-lock-s" type="number" value="0" style="width:50px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-lock">LOCK COORDS</button>
+      <button class="omni-btn" id="drv-unlock">UNLOCK</button>
+    </div>
+    <div class="drv-level" id="drv-qbit-detail">QBIT modules: none installed</div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <span class="label">MODULE</span>
+      <select id="drv-qbit-module" style="background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;"></select>
+      <button class="omni-btn" id="drv-qbit-install">INSTALL</button>
+      <button class="omni-btn" id="drv-qbit-uninstall">UNINSTALL</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">PROX POWER</span>
+      <input id="drv-qbit-power" type="number" value="100" min="0" max="100" style="width:60px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-qbit-proximity">SET PROXIMITY</button>
+    </div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <button class="omni-btn primary" id="drv-qbit-intitialize">INTITIALIZE ALIEN X</button>
+      <button class="omni-btn primary" id="drv-qbit-fastlaunch">FAST LAUNCH</button>
+    </div>
+    <div class="drv-level" id="drv-substance-status">SUBSTANCE: XGREYLEYWIN | modder not present | model: localised</div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <span class="label">MODDER ID</span>
+      <input id="drv-sub-modder" type="text" value="modder_x" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-sub-checkmodder">CHECK MODDER</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">TENSOR X</span><input id="drv-sub-tx" type="number" value="1" step="0.1" style="width:45px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <span class="label">TENSOR Y</span><input id="drv-sub-ty" type="number" value="1" step="0.1" style="width:45px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <span class="label">TENSOR Z</span><input id="drv-sub-tz" type="number" value="1" step="0.1" style="width:45px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <span class="label">TENSOR W</span><input id="drv-sub-tw" type="number" value="1" step="0.1" style="width:45px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-sub-settensor">SET TENSOR</button>
+    </div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <button class="omni-btn" id="drv-sub-locktensor">LOCK TENSOR</button>
+      <button class="omni-btn" id="drv-sub-unlocktensor">UNLOCK TENSOR</button>
+    </div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <button class="omni-btn primary" id="drv-sub-convert">LOCALISED → FULL</button>
+      <button class="omni-btn" id="drv-sub-revert">REVERT</button>
+    </div>
+    <div class="drv-level" id="drv-liquid-status">LIQUID SUBSTRATE: off | form: liquid_substrate | flavor: strawberry | volume: 1.0 | freq: 432Hz</div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <button class="omni-btn primary" id="drv-liquid-activate">ACTIVATE LIQUID</button>
+      <button class="omni-btn" id="drv-liquid-vertilize">VERTILIZE VOLUME</button>
+      <button class="omni-btn" id="drv-liquid-smooth">SMOOTH TENSORS</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">FLAVOR</span>
+      <input id="drv-liquid-flavor" type="text" value="piccle_juice" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-liquid-setflavor">SET FLAVOR</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">PARTICLE VOLUME</span>
+      <input id="drv-liquid-volume" type="number" value="1.0" step="0.1" style="width:70px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <span class="label">RESONANT FREQ (Hz)</span>
+      <input id="drv-liquid-freq" type="number" value="432" step="1" style="width:70px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-liquid-setfreq">SET FREQ</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">VARIANT</span><input id="drv-liquid-variant" type="text" value="cannabis_component" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <span class="label">TEXTURE</span><input id="drv-liquid-texture" type="text" value="cannabis_leaf" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-liquid-settexture">SET TEXTURE</button>
+    </div>
+    <div class="drv-level" id="drv-seed-status">SEED: leechseed | not planted | red particles: 0 | tables spawned: 0</div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <button class="omni-btn primary" id="drv-seed-plant">PLANT LEECHSEED</button>
+      <button class="omni-btn primary" id="drv-seed-spawn">SPAWN TABLE (RED)</button>
+    </div>
+    <div class="drv-level" id="drv-tons-status">TONS PACKAGE: off | tiny seeds replaced: no | mana: 0/99999 | units: 0/1000</div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <button class="omni-btn primary" id="drv-tons-activate">ACTIVATE TONS</button>
+      <button class="omni-btn" id="drv-tons-recharge">RECHARGE MANA</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">UNITS</span>
+      <input id="drv-tons-units" type="number" value="1000" min="0" max="1000" style="width:70px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-tons-units-set">SET UNITS</button>
+      <span class="label">SPEND MANA</span>
+      <input id="drv-tons-spend" type="number" value="0" min="0" style="width:70px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-tons-spend-btn">SPEND</button>
+    </div>
+    <div class="drv-level" id="drv-asmodius-status">ASMODIUS: no licence | keyphrase: none | btc: none</div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <span class="label">ISSUED TO</span>
+      <input id="drv-asmod-issued" type="text" value="operator" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <span class="label">KEYPHRASE</span>
+      <input id="drv-asmod-key" type="text" value="asmodius_keyphrace" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn primary" id="drv-asmod-write">WRITE LICENCE</button>
+    </div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <span class="label">BTC CMD</span>
+      <select id="drv-asmod-btc-cmd" style="background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+        <option value="address">address</option>
+        <option value="satoshi">satoshi</option>
+        <option value="balance">balance</option>
+      </select>
+      <input id="drv-asmod-btc-arg" type="text" placeholder="arg" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-asmod-btc">BTC EXEC</button>
+    </div>
+    <div class="drv-level" id="drv-cipher-status">CYPHER: hidden | secrets: belagore/belacore/belcusbelacus | active: none</div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <span class="label">CIPHER SECRET</span>
+      <input id="drv-cipher-secret" type="text" placeholder="belagore|belacore|belcusbelacus" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-cipher-decode">DECODE</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">ENCRYPT TEXT</span>
+      <input id="drv-cipher-enc" type="text" placeholder="plaintext" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-cipher-encrypt">ENCRYPT</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">DECRYPT TEXT</span>
+      <input id="drv-cipher-dec" type="text" placeholder="ciphertext" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-cipher-decrypt">DECRYPT</button>
+    </div>
+    <div class="drv-level" id="drv-endorsmet-status">ENDORSMET: not placed | endergod: not enthroned | endig: idle | endimium mass: 0/99999</div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <span class="label">LOCATION</span>
+      <input id="drv-end-loc" type="text" value="origin" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <span class="label">TIER</span>
+      <input id="drv-end-tier" type="number" value="1" min="0" max="10" style="width:50px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-end-place">PLACE ENDORSMET</button>
+    </div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <span class="label">ENDERGOD NAME</span>
+      <input id="drv-end-god-name" type="text" value="Endergod" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <span class="label">REALM</span>
+      <input id="drv-end-god-realm" type="text" value="void" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <span class="label">AUTHORITY</span>
+      <input id="drv-end-god-auth" type="number" value="50" min="0" max="100" style="width:60px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-end-enthrone">ENTHRONE</button>
+    </div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <span class="label">ENDIG REASON</span>
+      <input id="drv-end-endig-reason" type="text" value="endig_sequence" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-end-endig">ENDIG ADVANCE</button>
+      <button class="omni-btn" id="drv-end-endig-reset">RESET</button>
+    </div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <span class="label">ENDIMIUM AMOUNT</span>
+      <input id="drv-end-imium-amt" type="number" value="1000" style="width:80px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-end-accumulate">ACCUMULATE</button>
+      <span class="label">DENSITY</span>
+      <input id="drv-end-imium-dens" type="number" value="1.0" step="0.1" style="width:60px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-end-imium-dens-btn">SET DENSITY</button>
+    </div>
+    <div class="drv-level" id="drv-atomicus-status">ATOMICUS: off | JACK traits: 0 | stack: 0/9999 | pool: 0 | processor: prose</div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <span class="label">TRAIT</span>
+      <input id="drv-atomic-trait" type="text" value="JUSTICE" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <span class="label">VALUE</span>
+      <input id="drv-atomic-val" type="text" value="1" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-atomic-assign">ASSIGN CODE</button>
+    </div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <button class="omni-btn primary" id="drv-atomic-jack">JACK ACTIVATE</button>
+      <button class="omni-btn" id="drv-atomic-push">STACK PUSH</button>
+      <button class="omni-btn" id="drv-atomic-pop">STACK POP</button>
+      <button class="omni-btn" id="drv-atomic-clear">STACK CLEAR</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">MAXIMUSLIMIT</span>
+      <input id="drv-atomic-limit" type="number" value="9999" min="1" style="width:80px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-atomic-setlimit">SET LIMIT</button>
+      <span class="label">PROCESSOR MODE</span>
+      <input id="drv-atomic-proc-mode" type="text" value="prose" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-atomic-proc-mode-btn">SET MODE</button>
+      <button class="omni-btn" id="drv-atomic-cycle">CYCLE</button>
+    </div>
+    <div class="drv-level" id="drv-artifact-status">ARTIFACT: 0 artifacts | 0 bars | injections: 0</div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <span class="label">ARTIFACT ID</span>
+      <input id="drv-art-id" type="text" value="artifact_1" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <span class="label">FORMAT</span>
+      <select id="drv-art-format" style="background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+        <option value="javascript">javascript</option>
+        <option value="typescript">typescript</option>
+        <option value="json">json</option>
+        <option value="wasm">wasm</option>
+        <option value="glsl">glsl</option>
+        <option value="python">python</option>
+        <option value="sql">sql</option>
+        <option value="xsql">xsql</option>
+      </select>
+      <button class="omni-btn" id="drv-art-create">CREATE ARTIFACT</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">CONTENT</span>
+      <input id="drv-art-content" type="text" placeholder="code or data" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-art-bar">CREATE BAR</button>
+      <button class="omni-btn primary" id="drv-art-inject">INJECT</button>
+      <button class="omni-btn" id="drv-art-fast">FAST INJECT</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">LIST</span>
+      <button class="omni-btn" id="drv-art-list">LIST ARTIFACTS</button>
+      <button class="omni-btn" id="drv-art-status">STATUS</button>
+    </div>
+    <div class="drv-level" id="drv-omnitrix-status">OMNITRIX: not triggered | query: X→GHOST | variants: 0 | multi dim: off</div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <button class="omni-btn primary" id="drv-omni-trigger">TRIGGER FINDER</button>
+      <button class="omni-btn" id="drv-omni-multidim">ENABLE MULTI DIM</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">QUERY FROM</span>
+      <input id="drv-omni-from" type="text" value="X" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <span class="label">QUERY TO</span>
+      <input id="drv-omni-to" type="text" value="GHOST" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-omni-query">QUERY ALIEN</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">ALIEN ID</span>
+      <input id="drv-omni-alien" type="text" value="ghostfreak" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <span class="label">DIMENSION</span>
+      <input id="drv-omni-dim" type="text" value="multi_dim_1" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-omni-variant">CREATE VARIANT</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">INSTANCE ID</span>
+      <input id="drv-omni-inst" type="text" placeholder="instance id" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <span class="label">MOD DATA</span>
+      <input id="drv-omni-mod" type="text" placeholder='{"key":"val"}' style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-omni-mod">MOD VARIANT</button>
+    </div>
+    <div class="drv-level" id="drv-gate-status">GATE: 0 hidden | 0 jail | total 0 | phrase algo: idle</div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <span class="label">PHRASE SECRET</span>
+      <input id="drv-gate-secret" type="text" value="belagore" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn primary" id="drv-gate-expose">EXPOSE PORTS</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">GATE FILTER</span>
+      <input id="drv-gate-filter" type="text" placeholder="filter ports" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-gate-query">QUERY PORTS</button>
+    </div>
+    <div class="small-note">krnls → mcd cmd → zshell → linshell → lightshell → status · docker env persisted · proximity arc from bells · git trace per docker file · RC → network driver + CPU current · QBIT proximity → Alien X intilisisng · XSQL dialect · SUBSTANCE XGREYLEYWIN → dimension tensor localised→full model · LIQUID SUBSTRATE → cannabis component texture · piccle juice flavor · vertilize particle volume to resonating freq · smooth tensors · LEECHSEED seed → spawn variant tables from red particles · TONS PACKAGE → replace tiny seeds with max mana vals · ASMODIUS → ST index licence writer · TypeScript signature · keyphrase · BTC command · HIDDEN CYPHER → belagore belacore belcusbelacus secret cipher strings · another hidden cypther · ENDORSMET PLACEMENT → endergod sovereignty · endig termination · endimium mass · ATOMICUS CODES → Jcodes=JACK=traits=stack=maximuslimit · processor core prose mode · ARTIFACT INJECTOR → shared artifacts · tocode bars · multi-format fast inject · OMNITRIX FINDER → trigger layout · query alien X→Ghost · moddable multi-dimensional variant instances · HIDDEN GATE → hidden gate ports · jail avatar ports · word phrase algo · expose list via node</div>
+    <div class="drv-level" id="drv-avatar-status">AVATAR PARTITION: 9999 slots | assigned 0 | discovered 0 | empty 9999 | transitions 0</div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <span class="label">BASE ENCODED</span>
+      <input id="drv-avatar-encoded" type="text" value="belacore_heatblast" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn primary" id="drv-avatar-decode">BASE DECODE</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">SLOT INDEX</span>
+      <input id="drv-avatar-slot" type="number" value="0" min="0" max="9998" style="width:80px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <span class="label">AVATAR ID</span>
+      <input id="drv-avatar-id" type="text" value="heatblast" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <span class="label">AVATAR NAME</span>
+      <input id="drv-avatar-name" type="text" value="HEATBLAST" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-avatar-assign">ASSIGN SLOT</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">FROM SLOT</span>
+      <input id="drv-avatar-from" type="number" value="0" min="0" max="9998" style="width:80px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <span class="label">TO SLOT</span>
+      <input id="drv-avatar-to" type="number" value="1" min="0" max="9998" style="width:80px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-avatar-swap">SWAP PARTITION</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">TOPSOPS ENCODED</span>
+      <input id="drv-avatar-topsops" type="text" value="belacore_ghostfreak" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-avatar-transition">TRANSITION</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">QUERY SLOT</span>
+      <input id="drv-avatar-query" type="number" value="0" min="0" max="9998" style="width:80px;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-avatar-query-slot">QUERY</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">DISCOVER FILTER</span>
+      <input id="drv-avatar-tagfilter" type="text" placeholder="filter tags" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-avatar-discover">DISCOVER TAGS</button>
+    </div>
+    <div class="small-note">AVATAR PARTITION → 9999 usable spaces · swap partition assignation · base decode strips alien name → virtual state · instance port name tags discovered transitioning 9999 outcomes per topsops</div>
+    <div class="drv-level" id="drv-hash-status">HASH BLOCK: 0 blocks | agent tag: omnitrix-agent-01 | node: http://localhost:8080/hash-block</div>
+    <div class="drv-btn-row" style="margin-top:4px;">
+      <span class="label">AGENT TAG</span>
+      <input id="drv-hash-agent" type="text" value="omnitrix-agent-01" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn primary" id="drv-hash-generate">GENERATE+SAVE+PRINT+PROXY</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">PAYLOAD</span>
+      <input id="drv-hash-payload" type="text" placeholder='{"key":"val"}' style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="drv-hash-print">PRINT TO NODE</button>
+      <button class="omni-btn" id="drv-hash-proxy">PROXY VIA TAG</button>
+    </div>
+    <div class="row" style="margin-top:4px;">
+      <span class="label">STATUS</span>
+      <button class="omni-btn" id="drv-hash-status-btn">STATUS</button>
+    </div>
+    <div class="small-note">HASH BLOCK → cryptographic hash block from system state · save to docker env · print to Node server via HTTP POST · proxy via agent tag · hash chain links blocks</div>
+  </div>
+</div>
+
+<!-- Ark monitor dashboard -->
+<div id="ark-panel" class="panel">
+  <h2>ARK MONITOR — KRNL & TICK · DOCKER SORT</h2>
+  <div class="panel-content">
+    <div class="ark-grid">
+      <div class="ark-box">
+        <h4>KRNL PACKETS</h4>
+        <div id="ark-krnl"></div>
+      </div>
+      <div class="ark-box">
+        <h4>TICK TIMER</h4>
+        <div id="ark-tick"></div>
+      </div>
+      <div class="ark-box">
+        <h4>DOCKER SORT Q</h4>
+        <div id="ark-dockerq"></div>
+      </div>
+      <div class="ark-box">
+        <h4>SORTED EVENTS</h4>
+        <div id="ark-sorted"></div>
+      </div>
+    </div>
+    <div class="drv-btn-row">
+      <span class="label">SORTER PASSKEY</span>
+      <input id="ark-passkey" type="text" value="milmelons_extra" placeholder="milmelons_extra" style="flex:1;background:#000;border:1px solid #0f0;color:#0f0;padding:2px 4px;font:inherit;font-size:0.65rem;">
+      <button class="omni-btn" id="ark-enter-passkey">ENTER PASSKEY</button>
+      <button class="omni-btn" id="ark-tick-tick">TICK</button>
+      <button class="omni-btn" id="ark-krnl-inject">KRNL INJ</button>
+      <button class="omni-btn" id="ark-sort">SORT DOCKER</button>
+      <button class="omni-btn" id="ark-clear">CLEAR</button>
+    </div>
+    <div class="ark-val" id="ark-stats">packets: 0 · sorted: 0 · tick: 0</div>
+  </div>
+</div>
+
+<script src="src/hiliosphereumanite.js"></script>
+<script src="src/machinedrivers.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/controls/OrbitControls.js"></script>
+<script>
+/* ================= CONFIG / STATE ================= */
+const CONFIG = {
+  mcpEndpoint: 'ws://localhost:3001/mcp',
+  reconnectInterval: 3000,
+  hologramColors: [0x00ff00, 0x00ccff, 0xff00ff, 0xffff00, 0xff8800],
+};
+
+let state = {
+  mcpConnected: false,
+  mcpWs: null,
+  mcpTools: [],
+  mcpReconnectTimer: null,
+  currentAvatar: null,
+  hologramMesh: null,
+  store: { A: null, B: null, C: null },
+  slotMode: 'alpha',
+  autorotate: true,
+  materialMode: 'holo', // solid | wire | holo
+  lastRaw: '',
+};
+
+/* ================= HILIOSPHERUMANITE MECHANISM ================= */
+let mech = null;
+function mechInit() {
+  mech = new window.Hiliosphereumanite();
+  mechRender();
+}
+function mechRender() {
+  if (!mech) return;
+  const st = mech.state();
+  const lines = [
+    `H = f(h,s,m)  =>  H=${st.H.toFixed(3)}`,
+    `S=${st.S.toFixed(3)}  M=${st.M.toFixed(3)}`,
+    `Ihs=${st.Ihs.toFixed(3)}  Ism=${st.Ism.toFixed(3)}  Ihm=${st.Ihm.toFixed(3)}`,
+    `O = H+S+M+Ihs+Ism+IHM  =>  O=${st.O.toFixed(3)}`,
+    `Resonance: ${st.resonance ? 'ON' : 'OFF'}  (wordless verbalism)`,
+    `Freq: ${st.frequencyHz} Hz  |  hex: ${st.frequencyHex}  (distinct: ${st.frequencyReport().distinct})`,
+    `Coherent capture C: ${st.coherentCapture ? 1 : 0}  Rin=${st.rin}  Rout=${st.rout}`,
+  ];
+  document.getElementById('mech-out').textContent = lines.join('\n');
+  // sync inputs
+  document.getElementById('mech-h').value = st.h;
+  document.getElementById('mech-s').value = st.s;
+  document.getElementById('mech-m').value = st.m;
+  document.getElementById('mech-hz').value = st.frequencyHz;
+  document.getElementById('mech-hex').value = st.frequencyHex;
+  document.getElementById('mech-rin').value = st.rin;
+  document.getElementById('mech-resonate').textContent = st.resonance ? 'RESONANCE ON' : 'RESONANCE OFF';
+  document.getElementById('mech-capture').textContent = st.coherentCapture ? 'COHERENT CAPTURE ON' : 'COHERENT CAPTURE OFF';
+}
+function mechCompute() {
+  const h = parseFloat(document.getElementById('mech-h').value) || 0;
+  const s = parseFloat(document.getElementById('mech-s').value) || 0;
+  const m = parseFloat(document.getElementById('mech-m').value) || 0;
+  mech.setComponents(h, s, m);
+  const hz = parseFloat(document.getElementById('mech-hz').value) || 20000;
+  const hex = document.getElementById('mech-hex').value || '0xzK4frozE203';
+  mech.setFrequencyHz(hz);
+  mech.setFrequencyHex(hex);
+  const rin = parseFloat(document.getElementById('mech-rin').value) || 0;
+  mech.setRin(rin);
+  mcpLog(`Mechanism compute: H=${mech.computeH().toFixed(3)} O=${mech.computeO().toFixed(3)}`, 'out');
+  mechRender();
+}
+
+/* ================= DOM REFS ================= */
+const els = {
+  sysStatus: document.getElementById('sys-status'),
+  projStatus: document.getElementById('proj-status'),
+  mcpLink: document.getElementById('mcp-link'),
+  mcpState: document.getElementById('mcp-state'),
+  mcpTools: document.getElementById('mcp-tools'),
+  mcpEndpoint: document.getElementById('mcp-endpoint'),
+  mcpConnect: document.getElementById('mcp-connect'),
+  mcpDisconnect: document.getElementById('mcp-disconnect'),
+  mcpToolButtons: document.getElementById('mcp-tool-buttons'),
+  mcpLog: document.getElementById('mcp-log'),
+  mcpRaw: document.getElementById('mcp-raw'),
+  avatarList: document.getElementById('avatar-list'),
+  btnSolid: document.getElementById('btn-solid'),
+  btnWire: document.getElementById('btn-wire'),
+  btnHolo: document.getElementById('btn-holo'),
+  btnAutorot: document.getElementById('btn-autorot'),
+  storeSlot: document.getElementById('store-slot'),
+  btnStore: document.getElementById('btn-store'),
+  btnRecall: document.getElementById('btn-recall'),
+  btnReset: document.getElementById('btn-reset'),
+  loading: document.getElementById('loading'),
+};
+
+function mcpLog(msg, type='sys') {
+  const d = document.createElement('div');
+  d.className = 'mcp-msg ' + (type==='in'?'in': type==='out'?'out': type==='err'?'err':'sys');
+  d.textContent = new Date().toLocaleTimeString().split(' ')[0] + ' ' + msg;
+  els.mcpLog.appendChild(d);
+  els.mcpLog.scrollTop = els.mcpLog.scrollHeight;
+}
+
+/* ================= AVATAR CONTEXT BLOCKS ================= */
+/* Each context block describes an avatar. Stored as raw polygon data (vertices/faces). */
+const AVATAR_BLOCKS = [
+  {
+    id: 'heatblast',
+    name: 'HEATBLAST',
+    type: 'humanoid',
+    element: 'pyro',
+    color: 0xff4400,
+    glow: 0xffaa00,
+    vertices: [
+      [0,2.2,0],[0,0,0],[0,-1.4,0],[-0.6,1.6,-0.4],[0.6,1.6,-0.4],[-0.6,1.6,0.4],[0.6,1.6,0.4],
+      [-0.9,0.6,-0.9],[0.9,0.6,-0.9],[-0.9,0.6,0.9],[0.9,0.6,0.9],[-0.5,-0.8,-0.6],[0.5,-0.8,-0.6],[-0.5,-0.8,0.6],[0.5,-0.8,0.6],
+      [-0.45,-1.9,-0.5],[0.45,-1.9,-0.5],[-0.45,-1.9,0.5],[0.45,-1.9,0.5],
+    ],
+    faces: [
+      [3,4,1],[5,6,1],[3,7,4],[5,9,6],[4,8,1],[6,10,1],[7,8,4],[9,10,6],
+      [11,12,13],[11,12,14],[15,16,17],[15,16,18],[13,14,1],[17,18,1],
+    ],
+    desc: 'Plasma-based lifeform. High heat signature.',
+  },
+  {
+    id: 'fourarms',
+    name: 'FOURARMS',
+    type: 'humanoid',
+    element: 'strength',
+    color: 0xff0000,
+    glow: 0xff4444,
+    vertices: [
+      [0,2.4,0],[0,0,0],[0,-1.6,0],[-0.8,1.8,-0.5],[0.8,1.8,-0.5],[-0.8,1.8,0.5],[0.8,1.8,0.5],
+      [-1.1,0.8,-1.1],[1.1,0.8,-1.1],[-1.1,0.8,1.1],[1.1,0.8,1.1],
+      [-0.7,-1.0,-0.8],[0.7,-1.0,-0.8],[-0.7,-1.0,0.8],[0.7,-1.0,0.8],
+      [-1.3,-0.5,-1.3],[1.3,-0.5,-1.3],[-1.3,-0.5,1.3],[1.3,-0.5,1.3],
+      [-0.6,-2.2,-0.6],[0.6,-2.2,-0.6],[-0.6,-2.2,0.6],[0.6,-2.2,0.6],
+    ],
+    faces: [
+      [3,4,1],[5,6,1],[3,7,4],[5,9,6],[4,8,1],[6,10,1],[7,8,4],[9,10,6],
+      [11,12,13],[11,12,14],[15,16,17],[15,16,18],[19,20,21],[19,20,22],[13,14,1],[17,18,1],
+    ],
+    desc: 'Tetramand. Four-armed strength specialist.',
+  },
+  {
+    id: 'xlr8',
+    name: 'XLR8',
+    type: 'humanoid',
+    element: 'speed',
+    color: 0x222222,
+    glow: 0x00ff00,
+    vertices: [
+      [0,2.0,0],[0,0,0],[0,-1.2,0],[-0.5,1.4,-0.35],[0.5,1.4,-0.35],[-0.5,1.4,0.35],[0.5,1.4,0.35],
+      [-0.8,0.5,-0.8],[0.8,0.5,-0.8],[-0.8,0.5,0.8],[0.8,0.5,0.8],
+      [-0.4,-0.7,-0.5],[0.4,-0.7,-0.5],[-0.4,-0.7,0.5],[0.4,-0.7,0.5],
+      [-0.9,-0.2,-0.9],[0.9,-0.2,-0.9],[-0.9,-0.2,0.9],[0.9,-0.2,0.9],
+      [-0.35,-1.7,-0.35],[0.35,-1.7,-0.35],[-0.35,-1.7,0.35],[0.35,-1.7,0.35],
+    ],
+    faces: [
+      [3,4,1],[5,6,1],[3,7,4],[5,9,6],[4,8,1],[6,10,1],[7,8,4],[9,10,6],
+      [11,12,13],[11,12,14],[15,16,17],[15,16,18],[19,20,21],[19,20,22],[13,14,1],[17,18,1],
+    ],
+    desc: 'Kineceleran. Velocity-based anatomy.',
+  },
+  {
+    id: 'diamondhead',
+    name: 'DIAMONDHEAD',
+    type: 'silicon',
+    element: 'crystal',
+    color: 0x66ffee,
+    glow: 0xbbffff,
+    vertices: [
+      [0,2.5,0],[0,0.6,0],[0,-1.6,0],[-0.7,1.9,-0.5],[0.7,1.9,-0.5],[-0.7,1.9,0.5],[0.7,1.9,0.5],
+      [-1.0,0.9,-1.0],[1.0,0.9,-1.0],[-1.0,0.9,1.0],[1.0,0.9,1.0],
+      [-0.6,-0.8,-0.7],[0.6,-0.8,-0.7],[-0.6,-0.8,0.7],[0.6,-0.8,0.7],
+      [-0.5,-2.2,-0.5],[0.5,-2.2,-0.5],[-0.5,-2.2,0.5],[0.5,-2.2,0.5],
+    ],
+    faces: [
+      [3,4,1],[5,6,1],[3,7,4],[5,9,6],[4,8,1],[6,10,1],[7,8,4],[9,10,6],
+      [11,12,13],[11,12,14],[15,16,17],[15,16,18],[13,14,1],[17,18,1],
+    ],
+    desc: 'Petrosapien. Crystalline silicon structure.',
+  },
+  {
+    id: 'ghostfreak',
+    name: 'GHOSTFREAK',
+    type: 'ecto',
+    element: 'phantom',
+    color: 0x660066,
+    glow: 0xcc00ff,
+    vertices: [
+      [0,2.1,0],[0,0,0],[0,-1.5,0],[-0.55,1.5,-0.4],[0.55,1.5,-0.4],[-0.55,1.5,0.4],[0.55,1.5,0.4],
+      [-0.85,0.5,-0.85],[0.85,0.5,-0.85],[-0.85,0.5,0.85],[0.85,0.5,0.85],
+      [-0.45,-0.9,-0.6],[0.45,-0.9,-0.6],[-0.45,-0.9,0.6],[0.45,-0.9,0.6],
+      [-0.4,-2.0,-0.4],[0.4,-2.0,-0.4],[-0.4,-2.0,0.4],[0.4,-2.0,0.4],
+    ],
+    faces: [
+      [3,4,1],[5,6,1],[3,7,4],[5,9,6],[4,8,1],[6,10,1],[7,8,4],[9,10,6],
+      [11,12,13],[11,12,14],[15,16,17],[15,16,18],[13,14,1],[17,18,1],
+    ],
+    desc: 'Ectonurite. Intangible phantom form.',
+  },
+];
+
+/* Build a Three.js BufferGeometry from raw polygon (vertex/face) context block */
+function buildPolygonGeometry(block) {
+  const pos = [];
+  const idx = [];
+  block.vertices.forEach(v => { pos.push(v[0], v[1], v[2]); });
+  block.faces.forEach(f => { idx.push(f[0], f[1], f[2]); });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/* ================= THREE.JS SCENE ================= */
+let scene, camera, renderer, controls;
+let omnitrixGroup, dial, ring, strapL, strapR, projectorLens;
+let hologramPivot, hologramMesh, hologramWire, hologramPoints;
+let clock = new THREE.Clock();
+
+function initThree() {
+  const container = document.getElementById('canvas-container');
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x050508, 0.015);
+
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
+  camera.position.set(0, 2, 7);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(renderer.domElement);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.rotateSpeed = 0.6;
+  controls.zoomSpeed = 0.9;
+  controls.minDistance = 1.5;
+  controls.maxDistance = 25;
+  controls.enablePan = true;
+  controls.autoRotate = state.autorotate;
+  controls.autoRotateSpeed = 1.2;
+
+  // Ambient + accent lights
+  const amb = new THREE.AmbientLight(0x222222, 0.6);
+  scene.add(amb);
+  const key = new THREE.DirectionalLight(0x00ff00, 1.0);
+  key.position.set(5, 8, 5);
+  scene.add(key);
+  const fill = new THREE.PointLight(0x00ccff, 0.7);
+  fill.position.set(-5, 2, -5);
+  scene.add(fill);
+
+  buildOmnitrix();
+  buildHologramProjector();
+
+  window.addEventListener('resize', onResize);
+}
+
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+/* Omnitrix device: central dial + rotating outer ring + wrist straps + projector lens */
+function buildOmnitrix() {
+  omnitrixGroup = new THREE.Group();
+  scene.add(omnitrixGroup);
+
+  // Central dial (the Omnitrix face)
+  const dialGeo = new THREE.TorusGeometry(0.62, 0.14, 24, 64);
+  const dialMat = new THREE.MeshStandardMaterial({
+    color: 0x111111, metalness: 0.9, roughness: 0.2, emissive: 0x001100, emissiveIntensity: 0.5
+  });
+  dial = new THREE.Mesh(dialGeo, dialMat);
+  omnitrixGroup.add(dial);
+
+  // Dial faceplate (green hourglass-ish symbol)
+  const faceGeo = new THREE.RingGeometry(0.24, 0.34, 64);
+  const faceMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+  const faceplate = new THREE.Mesh(faceGeo, faceMat);
+  faceplate.rotation.x = Math.PI / 2;
+  dial.add(faceplate);
+
+  // Outer rotating ring
+  const ringGeo = new THREE.TorusGeometry(1.05, 0.10, 20, 100);
+  const ringMat = new THREE.MeshStandardMaterial({
+    color: 0x222222, metalness: 1, roughness: 0.15, emissive: 0x000a00
+  });
+  ring = new THREE.Mesh(ringGeo, ringMat);
+  omnitrixGroup.add(ring);
+
+  // Segment markers on ring
+  const segGeo = new THREE.BoxGeometry(0.05, 0.16, 0.18);
+  const segMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+  for (let i = 0; i < 10; i++) {
+    const seg = new THREE.Mesh(segGeo, segMat);
+    const a = (i / 10) * Math.PI * 2;
+    seg.position.set(Math.sin(a) * 1.05, 0, Math.cos(a) * 1.05);
+    seg.rotation.y = a;
+    ring.add(seg);
+  }
+
+  // Wrist straps (left/right)
+  const strapGeo = new THREE.TorusGeometry(1.35, 0.11, 16, 64, Math.PI);
+  const strapMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, metalness: 0.6, roughness: 0.4 });
+  strapL = new THREE.Mesh(strapGeo, strapMat);
+  strapL.rotation.x = Math.PI / 2;
+  strapL.position.y = -0.05;
+  omnitrixGroup.add(strapL);
+
+  strapR = new THREE.Mesh(strapGeo, strapMat);
+  strapR.rotation.x = -Math.PI / 2;
+  strapR.position.y = 0.05;
+  omnitrixGroup.add(strapR);
+
+  // Projector lens (top of dial where hologram emerges)
+  const lensGeo = new THREE.CylinderGeometry(0.22, 0.30, 0.5, 32);
+  const lensMat = new THREE.MeshStandardMaterial({
+    color: 0x002200, metalness: 0.8, roughness: 0.1, emissive: 0x003300, transparent: true, opacity: 0.85
+  });
+  projectorLens = new THREE.Mesh(lensGeo, lensMat);
+  projectorLens.rotation.x = Math.PI / 2;
+  projectorLens.position.set(0, 0.75, 0);
+  dial.add(projectorLens);
+
+  // Hologram pivot (attached to lens, projection emerges here)
+  hologramPivot = new THREE.Group();
+  hologramPivot.position.set(0, 1.0, 0);
+  dial.add(hologramPivot);
+
+  // Floating particles around device
+  const parts = [];
+  const pGeo = new THREE.BufferGeometry();
+  const pPos = [];
+  for (let i = 0; i < 120; i++) {
+    pPos.push((Math.random()-0.5)*6, (Math.random()-0.5)*6, (Math.random()-0.5)*6);
+    parts.push({ x:pPos[pPos.length-3], y:pPos[pPos.length-2], z:pPos[pPos.length-1],
+                 vx:(Math.random()-0.5)*0.02, vy:(Math.random()-0.5)*0.02, vz:(Math.random()-0.5)*0.02 });
+  }
+  pGeo.setAttribute('position', new THREE.Float32BufferAttribute(pPos, 3));
+  const pMat = new THREE.PointsMaterial({ color: 0x00ff00, size: 0.025, transparent: true, opacity: 0.6 });
+  const pSys = new THREE.Points(pGeo, pMat);
+  scene.add(pSys);
+  state._particles = { geo: pGeo, parts };
+
+  // Initial rotation
+  omnitrixGroup.rotation.set(-0.3, 0.4, 0);
+}
+
+function buildHologramProjector() {
+  // Empty placeholder; filled when an avatar is projected
+}
+
+/* Project an avatar from a context block into the holographic space as raw polygon shapes */
+function projectAvatar(block) {
+  state.currentAvatar = block;
+  els.projStatus.textContent = block.name;
+  els.projStatus.className = 'value badge online';
+  mcpLog(`Projecting hologram: ${block.name} (${block.type})`, 'out');
+
+  // Clear previous hologram
+  if (hologramMesh) { hologramPivot.remove(hologramMesh); hologramMesh.geometry.dispose(); hologramMesh.material.dispose(); hologramMesh = null; }
+  if (hologramWire) { hologramPivot.remove(hologramWire); hologramWire.geometry.dispose(); hologramWire.material.dispose(); hologramWire = null; }
+  if (hologramPoints) { hologramPivot.remove(hologramPoints); hologramPoints.geometry.dispose(); hologramPoints.material.dispose(); hologramPoints = null; }
+
+  const geo = buildPolygonGeometry(block);
+
+  // Solid version
+  const solidMat = new THREE.MeshStandardMaterial({
+    color: block.color, emissive: block.glow, emissiveIntensity: 1.2,
+    metalness: 0.3, roughness: 0.4, transparent: true, opacity: 0.55
+  });
+  hologramMesh = new THREE.Mesh(geo, solidMat);
+
+  // Wireframe (raw polygon edges)
+  const wireMat = new THREE.LineBasicMaterial({ color: block.glow, linewidth: 2, transparent: true, opacity: 0.9 });
+  hologramWire = new THREE.LineSegments(new THREE.WireframeGeometry(geo), wireMat);
+
+  // Points (raw polygon vertices)
+  const ptsMat = new THREE.PointsMaterial({ color: block.color, size: 0.04, transparent: true, opacity: 0.8 });
+  hologramPoints = new THREE.Points(geo, ptsMat);
+
+  // Hologram container group
+  const holder = new THREE.Group();
+  holder.add(hologramMesh);
+  holder.add(hologramWire);
+  holder.add(hologramPoints);
+  hologramPivot.add(holder);
+  state._hologramHolder = holder;
+
+  // Hologram bob animation data
+  state._holoTime = 0;
+
+  applyMaterialMode();
+  updateAvatarUI();
+  renderMcpTools();
+}
+
+function applyMaterialMode() {
+  if (!hologramMesh) return;
+  hologramMesh.visible = state.materialMode === 'solid' || state.materialMode === 'holo';
+  hologramWire.visible = state.materialMode === 'wire' || state.materialMode === 'holo';
+  hologramPoints.visible = state.materialMode === 'wire' || state.materialMode === 'holo';
+  // tint buttons
+  [els.btnSolid, els.btnWire, els.btnHolo].forEach(b => b.classList.remove('selected'));
+  if (state.materialMode === 'solid') els.btnSolid.classList.add('selected');
+  if (state.materialMode === 'wire') els.btnWire.classList.add('selected');
+  if (state.materialMode === 'holo') els.btnHolo.classList.add('selected');
+}
+
+function updateAvatarUI() {
+  els.avatarList.innerHTML = '';
+  AVATAR_BLOCKS.forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = 'omni-btn ' + (state.currentAvatar && state.currentAvatar.id === b.id ? 'selected' : '');
+    btn.textContent = b.name + ' [' + b.element + ']';
+    btn.title = b.desc;
+    btn.onclick = () => projectAvatar(b);
+    els.avatarList.appendChild(btn);
+  });
+}
+
+/* Store / recall slots */
+function storeAvatar(slot) {
+  if (!state.currentAvatar) { mcpLog('No avatar active to store.', 'err'); return; }
+  state.store[slot] = JSON.parse(JSON.stringify(state.currentAvatar));
+  mcpLog(`Stored ${state.currentAvatar.name} -> SLOT ${slot}`, 'out');
+}
+function recallAvatar(slot) {
+  const b = state.store[slot];
+  if (!b) { mcpLog(`SLOT ${slot} empty.`, 'err'); return; }
+  projectAvatar(b);
+  mcpLog(`Recalled SLOT ${slot}: ${b.name}`, 'out');
+}
+
+/* ================= SLOT ENUMERATION MODES ================= */
+/* Slots can be enumerated alphabetical (A/B/C), numerical (1/2/3), or encrypted (ROT13). Toggle via MCP. */
+const SLOT_MODES = ['alpha','numeric','encrypted'];
+function slotLabelFor(key) {
+  const idx = 'ABC'.indexOf(key);
+  if (idx < 0) return key;
+  if (state.slotMode === 'alpha') return ['A','B','C'][idx];
+  if (state.slotMode === 'numeric') return ['1','2','3'][idx];
+  if (state.slotMode === 'encrypted') return ['N','O','P'][idx]; // ROT13 of A,B,C
+  return key;
+}
+function keyForSlotLabel(label) {
+  const labels = ['A','B','C'].map(k => slotLabelFor(k));
+  const idx = labels.indexOf(label);
+  return idx >= 0 ? 'ABC'[idx] : label;
+}
+function toggleSlotMode() {
+  const i = SLOT_MODES.indexOf(state.slotMode);
+  state.slotMode = SLOT_MODES[(i + 1) % SLOT_MODES.length];
+  renderSlotSelect();
+  mcpLog(`Slot enumeration -> ${state.slotMode.toUpperCase()}`, 'out');
+  return state.slotMode;
+}
+function renderSlotSelect() {
+  const sel = els.storeSlot;
+  if (!sel) return;
+  sel.innerHTML = '';
+  ['A','B','C'].forEach(k => {
+    const o = document.createElement('option');
+    o.value = k;
+    o.textContent = `SLOT ${slotLabelFor(k)}`;
+    sel.appendChild(o);
+  });
+  // update mode badge if present
+  const badge = document.getElementById('slot-mode-badge');
+  if (badge) badge.textContent = state.slotMode.toUpperCase();
+}
+
+/* ================= MCP CLIENT (JSON-RPC 2.0 over WebSocket) ================= */
+function mcpConnect() {
+  const url = els.mcpEndpoint.value || CONFIG.mcpEndpoint;
+  if (state.mcpWs && state.mcpWs.readyState === WebSocket.OPEN) return;
+  setMcpState('connecting');
+  mcpLog(`Connecting to MCP endpoint ${url}...`);
+  try {
+    state.mcpWs = new WebSocket(url);
+  } catch (e) {
+    mcpLog(`WebSocket error: ${e.message}`, 'err');
+    setMcpState('offline');
+    scheduleReconnect();
+    return;
+  }
+  state.mcpWs.binaryType = 'arraybuffer';
+  state.mcpWs.onopen = () => {
+    setMcpState('online');
+    mcpLog('MCP link established.', 'in');
+    els.mcpConnect.disabled = true;
+    els.mcpDisconnect.disabled = false;
+    mcpSend({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'omnitrix-hologram', version: '3.1' } } });
+  };
+  state.mcpWs.onmessage = (ev) => {
+    let data;
+    try { data = JSON.parse(ev.data); } catch (e) { mcpLog('Invalid JSON frame.', 'err'); return; }
+    els.mcpRaw.textContent = JSON.stringify(data, null, 2);
+    state.lastRaw = els.mcpRaw.textContent;
+    if (data.method === 'initialized') { mcpLog('Server initialized.', 'in'); mcpListTools(); return; }
+    if (data.method === 'ping') { mcpSend({ jsonrpc:'2.0', id: Date.now(), method: 'pong', params: {} }); return; }
+    if (data.method === 'tools/call') {
+      const params = data.params || {};
+      let result;
+      if (CMD_ROUTER[params.name]) {
+        result = executeCommand(params.name, params.arguments || {});
+      } else if (params.name === 'toggle_slot_mode') {
+        const newMode = toggleSlotMode();
+        result = { mode: newMode, labels: ['A','B','C'].map(k => slotLabelFor(k)) };
+      } else {
+        result = { error: 'unknown tool/command: ' + params.name };
+      }
+      mcpSend({ jsonrpc:'2.0', id: data.id, method: 'tools/call_response', params: { result } });
+      return;
+    }
+    if (data.id === 1 && data.result) { mcpLog('Initialize accepted.', 'in'); mcpListTools(); return; }
+    if (data.id && data.result !== undefined && data.result.tools) {
+      state.mcpTools = data.result.tools || [];
+      renderMcpTools();
+      mcpLog(`Discovered ${state.mcpTools.length} tool(s).`, 'in');
+      return;
+    }
+    if (data.id && data.error) { mcpLog(`RPC error ${data.error.code}: ${data.error.message}`, 'err'); return; }
+    if (data.id && data.result) { mcpLog(`RPC result id=${data.id}: ${JSON.stringify(data.result).slice(0,200)}`, 'in'); return; }
+    mcpLog(`Unknown message: ${JSON.stringify(data).slice(0,160)}`);
+  };
+  state.mcpWs.onclose = () => {
+    setMcpState('offline');
+    mcpLog('MCP link closed.', 'err');
+    els.mcpConnect.disabled = false;
+    els.mcpDisconnect.disabled = true;
+    scheduleReconnect();
+  };
+  state.mcpWs.onerror = (e) => {
+    mcpLog('MCP transport error.', 'err');
+    setMcpState('offline');
+  };
+}
+
+function scheduleReconnect() {
+  if (state.mcpReconnectTimer) clearTimeout(state.mcpReconnectTimer);
+  state.mcpReconnectTimer = setTimeout(() => {
+    if (!state.mcpConnected) mcpConnect();
+  }, CONFIG.reconnectInterval);
+}
+
+function mcpDisconnect() {
+  if (state.mcpReconnectTimer) { clearTimeout(state.mcpReconnectTimer); state.mcpReconnectTimer = null; }
+  if (state.mcpWs) { state.mcpWs.close(); state.mcpWs = null; }
+  setMcpState('offline');
+  mcpLog('MCP link terminated by user.', 'sys');
+  els.mcpConnect.disabled = false;
+  els.mcpDisconnect.disabled = true;
+}
+
+function mcpSend(payload) {
+  if (!state.mcpWs || state.mcpWs.readyState !== WebSocket.OPEN) {
+    mcpLog('MCP not connected.', 'err');
+    return false;
+  }
+  state.mcpWs.send(JSON.stringify(payload));
+  els.mcpRaw.textContent = JSON.stringify(payload, null, 2);
+  state.lastRaw = els.mcpRaw.textContent;
+  mcpLog(`-> ${payload.method} id=${payload.id}`, 'out');
+  return true;
+}
+
+function mcpListTools() {
+  mcpSend({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+}
+
+function mcpCallTool(name, args = {}) {
+  // Local toggle tool works even without an MCP server
+  if (name === 'toggle_slot_mode') {
+    const newMode = toggleSlotMode();
+    mcpLog(`MCP toggle_slot_mode -> ${newMode.toUpperCase()}`, 'out');
+    els.mcpRaw.textContent = JSON.stringify({ jsonrpc:'2.0', result: { mode: newMode } }, null, 2);
+    return;
+  }
+  mcpSend({ jsonrpc: '2.0', id: Date.now(), method: 'tools/call', params: { name, arguments: args } });
+}
+
+function setMcpState(s) {
+  state.mcpConnected = (s === 'online');
+  const badge = els.mcpState;
+  badge.textContent = s;
+  badge.className = 'value badge ' + (s === 'online' ? 'online' : s === 'connecting' ? 'connecting' : 'offline');
+  els.mcpLink.textContent = state.mcpConnected ? 'CONNECTED' : 'DISCONNECTED';
+  els.mcpLink.className = 'value badge ' + (state.mcpConnected ? 'online' : 'offline');
+}
+
+function renderMcpTools() {
+  els.mcpTools.textContent = state.mcpTools.length ? state.mcpTools.map(t => t.name).join(', ') : '-';
+  els.mcpToolButtons.innerHTML = '';
+  // Local toggle tool exposed to MCP
+  const bt = document.createElement('button');
+  bt.className = 'omni-btn';
+  bt.textContent = 'TOGGLE SLOT MODE';
+  bt.title = 'Cycle slot enumeration: ALPHA -> NUMERIC -> ENCRYPTED via MCP';
+  bt.onclick = () => {
+    mcpCallTool('toggle_slot_mode', {});
+  };
+  els.mcpToolButtons.appendChild(bt);
+  state.mcpTools.forEach(t => {
+    const b = document.createElement('button');
+    b.className = 'omni-btn';
+    b.textContent = t.name;
+    b.title = (t.description || '') + '';
+    b.onclick = () => {
+      mcpCallTool(t.name, {});
+    };
+    els.mcpToolButtons.appendChild(b);
+  });
+}
+
+/* ================= ANIMATION LOOP ================= */
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Rotate Omnitrix outer ring slowly
+  if (ring) ring.rotation.y = t * 0.25;
+  if (dial) {
+    // subtle breathing on the dial
+    dial.scale.setScalar(1 + Math.sin(t * 2) * 0.015);
+  }
+
+  // Particles drift
+  if (state._particles) {
+    const p = state._particles.parts;
+    const attr = state._particles.geo.attributes.position;
+    for (let i = 0; i < p.length; i++) {
+      p[i].x += p[i].vx; p[i].y += p[i].vy; p[i].z += p[i].vz;
+      if (Math.abs(p[i].x) > 3) p[i].vx *= -1;
+      if (Math.abs(p[i].y) > 3) p[i].vy *= -1;
+      if (Math.abs(p[i].z) > 3) p[i].vz *= -1;
+      attr.setXYZ(i, p[i].x, p[i].y, p[i].z);
+    }
+    attr.needsUpdate = true;
+  }
+
+  // Hologram bob + pulse
+  if (state._hologramHolder) {
+    state._holoTime = (state._holoTime || 0) + 0.04;
+    state._hologramHolder.position.y = 1.0 + Math.sin(t * 3) * 0.12;
+    state._hologramHolder.rotation.y = t * 0.5 + (state.autorotate ? t * 0.2 : 0);
+    const pulse = 0.7 + Math.sin(t * 6) * 0.3;
+    if (hologramMesh) hologramMesh.material.opacity = 0.35 + pulse * 0.25;
+    if (hologramWire) hologramWire.material.opacity = 0.5 + pulse * 0.3;
+    if (hologramPoints) hologramPoints.material.opacity = 0.5 + pulse * 0.3;
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+/* ================= EVENT WIRING ================= */
+function wireEvents() {
+  els.mcpConnect.onclick = mcpConnect;
+  els.mcpDisconnect.onclick = mcpDisconnect;
+  els.mcpEndpoint.onchange = () => { CONFIG.mcpEndpoint = els.mcpEndpoint.value; };
+
+  els.btnSolid.onclick = () => { state.materialMode = 'solid'; applyMaterialMode(); };
+  els.btnWire.onclick = () => { state.materialMode = 'wire'; applyMaterialMode(); };
+  els.btnHolo.onclick = () => { state.materialMode = 'holo'; applyMaterialMode(); };
+
+  els.btnAutorot.onclick = () => {
+    state.autorotate = !state.autorotate;
+    controls.autoRotate = state.autorotate;
+    els.btnAutorot.textContent = state.autorotate ? 'ON' : 'OFF';
+    els.btnAutorot.classList.toggle('selected', state.autorotate);
+  };
+
+  els.btnStore.onclick = () => storeAvatar(els.storeSlot.value);
+  els.btnRecall.onclick = () => recallAvatar(els.storeSlot.value);
+
+  els.btnReset.onclick = () => {
+    controls.reset();
+    omnitrixGroup.rotation.set(-0.3, 0.4, 0);
+  };
+
+  /* Mechanism wiring */
+  document.getElementById('mech-compute').onclick = mechCompute;
+  document.getElementById('mech-resonate').onclick = () => { mech.toggleResonance(); mechRender(); mcpLog(`Resonance -> ${mech.isResonating()?'ON':'OFF'}`, 'out'); };
+  document.getElementById('mech-bell').onclick = () => { mcpLog(mech.vacuumDbSwapWithBell(), 'out'); mechRender(); };
+  document.getElementById('mech-capture').onclick = () => { mech.toggleCoherentCapture(); mech.updateRout(); mcpLog(`Coherent capture -> ${mech.coherentCapture?'ON':'OFF'} Rout=${mech.getRout()}`, 'out'); mechRender(); };
+  document.getElementById('mech-hz').onchange = mechCompute;
+  document.getElementById('mech-hex').onchange = mechCompute;
+  document.getElementById('mech-rin').onchange = mechCompute;
+  [document.getElementById('mech-h'), document.getElementById('mech-s'), document.getElementById('mech-m')].forEach(i => i.onchange = mechCompute);
+
+  /* ================= MACHINE DRIVER STACK WIRING ================= */
+  let drvSelected = { level: null, driverId: null };
+  function drvInit() {
+    const sel = document.getElementById('drv-level');
+    sel.innerHTML = '';
+    MachineDriverStack.DRIVER_LEVELS.forEach(lv => {
+      const o = document.createElement('option');
+      o.value = lv.key;
+      o.textContent = lv.labelFull + ' (' + lv.label + ')';
+      sel.appendChild(o);
+    });
+    drvSetLevel(sel.value || 'krnl');
+    // docker env
+    const env = MachineDriverStack.loadDockerEnv();
+    document.getElementById('drv-docker').textContent = JSON.stringify(env, null, 2);
+  }
+  function drvSetLevel(key) {
+    drvSelected.level = key;
+    drvSelected.driverId = null;
+    const lv = MachineDriverStack.DRIVER_LEVELS.find(l => l.key === key);
+    document.getElementById('drv-level-desc').textContent = (lv ? lv.desc : '') + ' — ' + (lv ? lv.labelFull : '');
+    const list = document.getElementById('drv-list');
+    list.innerHTML = '';
+    (MachineDriverStack.MACHINE_DRIVERS[key] || []).forEach(d => {
+      const item = document.createElement('div');
+      item.className = 'drv-item';
+      item.innerHTML = '<span>' + d.label + '</span><span class="drv-status ' + d.status + '">' + d.status + '</span>';
+      item.title = d.desc;
+      item.onclick = () => {
+        document.querySelectorAll('.drv-item').forEach(x => x.classList.remove('selected'));
+        item.classList.add('selected');
+        drvSelected.driverId = d.id;
+        drvUpdateFormed();
+      };
+      list.appendChild(item);
+    });
+    drvUpdateFormed();
+  }
+  function drvUpdateFormed() {
+    const formed = drvSelected.level && drvSelected.driverId
+      ? MachineDriverStack.formCommand(drvSelected.level, drvSelected.driverId, document.getElementById('drv-args').value)
+      : null;
+    const el = document.getElementById('drv-formed');
+    if (formed && formed.ok) {
+      el.textContent = formed.cmd;
+      el.style.color = '#0ff';
+    } else {
+      el.textContent = '— select a driver';
+      el.style.color = '#555';
+    }
+  }
+  function drvExec() {
+    if (!drvSelected.level || !drvSelected.driverId) {
+      cmdLog('! driver stack: no driver selected', 'err');
+      return;
+    }
+    const res = MachineDriverStack.executeFormedCommand(drvSelected.level, drvSelected.driverId, document.getElementById('drv-args').value);
+    cmdLog('DRV ' + drvSelected.level + '/' + drvSelected.driverId + ' => ' + (res.ok ? 'OK' : 'ERR') + ' :: ' + (res.formedCmd || res.error), res.ok ? 'result' : 'err');
+    if (res.ok && res.formedCmd) {
+      // echo into touch log too
+    }
+  }
+
+  /* wire driver UI */
+  document.getElementById('drv-level').onchange = (ev) => drvSetLevel(ev.target.value);
+  document.getElementById('drv-args').oninput = drvUpdateFormed;
+  document.getElementById('drv-form').onclick = drvUpdateFormed;
+  document.getElementById('drv-exec').onclick = drvExec;
+
+  /* docker env wiring */
+  document.getElementById('drv-docker-save').onclick = () => {
+    MachineDriverStack.saveDockerEnv();
+    document.getElementById('drv-docker').textContent = JSON.stringify(MachineDriverStack.DockerEnv, null, 2);
+    document.getElementById('drv-gittrace').textContent = JSON.stringify(MachineDriverStack.DockerEnv.gitTrace, null, 2);
+    drvRenderProx();
+    mcpLog('Docker environment saved with git trace block.', 'out');
+  };
+  document.getElementById('drv-docker-load').onclick = () => {
+    MachineDriverStack.loadDockerEnv();
+    document.getElementById('drv-docker').textContent = JSON.stringify(MachineDriverStack.DockerEnv, null, 2);
+    document.getElementById('drv-gittrace').textContent = JSON.stringify(MachineDriverStack.DockerEnv.gitTrace, null, 2);
+    drvRenderProx();
+    mcpLog('Docker environment loaded.', 'in');
+  };
+  document.getElementById('drv-docker-reset').onclick = () => {
+    MachineDriverStack.resetDockerEnv();
+    document.getElementById('drv-docker').textContent = JSON.stringify(MachineDriverStack.DockerEnv, null, 2);
+    document.getElementById('drv-gittrace').textContent = JSON.stringify(MachineDriverStack.DockerEnv.gitTrace, null, 2);
+    drvRenderProx();
+    mcpLog('Docker environment reset to default.', 'sys');
+  };
+
+  function drvRenderProx() {
+    const st = MachineDriverStack.proximityArcStatus();
+    const el = document.getElementById('drv-prox');
+    el.textContent = `PROXIMITY ARC: active=${st.active} intensity=${(st.intensity||0).toFixed(2)} last=${st.lastEmit? st.lastEmit.source+' @'+st.lastEmit.at.split('T')[1].slice(0,8):'—'}`;
+    el.style.color = st.active ? '#0ff' : '#555';
+  }
+
+  function drvRenderRc() {
+    const st = MachineDriverStack.RCController.status();
+    const el = document.getElementById('drv-rc-status');
+    el.textContent = `RC: ${st.connected?'CONNECTED':'disconnected'} | cpu=${st.cpuCurrent.toFixed(2)}A ${st.cpuVoltage.toFixed(2)}V ${st.powerW.toFixed(2)}W | net=${st.network?st.network.ip+':'+st.network.speed:'—'}`;
+    el.style.color = st.connected ? '#0ff' : '#555';
+    document.getElementById('drv-rc-connect').disabled = st.connected;
+    document.getElementById('drv-rc-disconnect').disabled = !st.connected;
+  }
+
+  document.getElementById('drv-rc-connect').onclick = () => {
+    MachineDriverStack.RCController.connect();
+    drvRenderRc();
+    mcpLog('RC controller connected to network driver.', 'out');
+  };
+  document.getElementById('drv-rc-disconnect').onclick = () => {
+    MachineDriverStack.RCController.disconnect();
+    drvRenderRc();
+    mcpLog('RC controller disconnected.', 'out');
+  };
+
+  function drvRenderSpectral() {
+    const st = MachineDriverStack.SpectralRangeServer.status();
+    const el = document.getElementById('drv-spectral-status');
+    el.textContent = `SPECTRAL: ${st.serverRunning?'ON':'off'} | max ${st.maxSpectralRange}${st.unit} | range=${st.currentRange}${st.unit} | folds=${st.foldMultiplier}x (${st.foldedValues.join(',') || '—'}) | lock=${st.lockActive?'ON x'+st.coordinatesLocked.x+' y'+st.coordinatesLocked.y+' z'+st.coordinatesLocked.z+' s'+st.coordinatesLocked.spectral:'off'}`;
+    el.style.color = st.serverRunning ? '#0ff' : '#555';
+  }
+
+  document.getElementById('drv-melencoly').onclick = () => {
+    const res = MachineDriverStack.MelencolyDreamshell.trigger();
+    arkRender();
+    mcpLog('Melencoly @dreamshell triggered — Python env formed: ' + res.pythonEnv.interpreter + ' ' + res.pythonEnv.version, 'out');
+  };
+
+  document.getElementById('drv-spectral').onclick = () => {
+    const res = MachineDriverStack.SpectralRangeServer.start();
+    drvRenderSpectral();
+    mcpLog('Spectral range server: ' + res.range + ' ' + MachineDriverStack.SpectralRangeServer.unit + ' — ' + res.rule, 'out');
+  };
+
+  document.getElementById('drv-fold').onclick = () => {
+    const val = document.getElementById('drv-fold-val').value;
+    const res = MachineDriverStack.SpectralRangeServer.fold(val);
+    drvRenderSpectral();
+    mcpLog('Spectral folded +' + val + ' => ' + res.currentRange + ' ' + MachineDriverStack.SpectralRangeServer.unit, 'out');
+  };
+
+  document.getElementById('drv-lock').onclick = () => {
+    const res = MachineDriverStack.SpectralRangeServer.lockCoordinates(
+      document.getElementById('drv-lock-x').value,
+      document.getElementById('drv-lock-y').value,
+      document.getElementById('drv-lock-z').value,
+      document.getElementById('drv-lock-s').value
+    );
+    drvRenderSpectral();
+    mcpLog('Coordinates locked to docker: x=' + res.coordinates.x + ' y=' + res.coordinates.y + ' z=' + res.coordinates.z + ' s=' + res.coordinates.spectral, 'out');
+  };
+
+  document.getElementById('drv-unlock').onclick = () => {
+    const res = MachineDriverStack.SpectralRangeServer.unlockCoordinates();
+    drvRenderSpectral();
+    mcpLog('Coordinates unlocked.', 'out');
+  };
+
+  /* ================= QBIT PROXIMITY WIRING ================= */
+  function qbitInit() {
+    const sel = document.getElementById('drv-qbit-module');
+    sel.innerHTML = '';
+    Object.values(MachineDriverStack.QbitProximityModule.modules).forEach(m => {
+      const o = document.createElement('option');
+      o.value = m.id;
+      o.textContent = m.label + ' (' + m.target + ')';
+      sel.appendChild(o);
+    });
+    drvRenderQbit();
+  }
+  function drvRenderQbit() {
+    const st = MachineDriverStack.QbitProximityModule.status();
+    const el = document.getElementById('drv-qbit-status');
+    const detail = document.getElementById('drv-qbit-detail');
+    const installed = Object.values(st.modules).filter(m => m.installed).map(m => m.label);
+    el.textContent = `QBIT: xsql=${st.xsqlDialect} | alien_x level=${st.alienXIntilisationLevel} | initialized=${st.alienXInitialized} | fastLaunch=${st.fastLaunchReady}`;
+    el.style.color = st.fastLaunchReady ? '#0ff' : st.alienXInitialized ? '#ff0' : '#555';
+    detail.textContent = 'QBIT modules: ' + (installed.length ? installed.join(', ') : 'none');
+    document.getElementById('drv-qbit-intitialize').disabled = !st.fastLaunchReady;
+    document.getElementById('drv-qbit-fastlaunch').disabled = !(st.fastLaunchReady && st.alienXInitialized);
+  }
+  document.getElementById('drv-qbit-install').onclick = () => {
+    const mod = document.getElementById('drv-qbit-module').value;
+    const res = MachineDriverStack.QbitProximityModule.install(mod);
+    qbitInit();
+    mcpLog('QBIT install ' + mod + ' => ' + (res.ok ? 'OK' : 'ERR') + ' level=' + res.alienXLevel, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-qbit-uninstall').onclick = () => {
+    const mod = document.getElementById('drv-qbit-module').value;
+    const res = MachineDriverStack.QbitProximityModule.uninstall(mod);
+    qbitInit();
+    mcpLog('QBIT uninstall ' + mod + ' => ' + (res.ok ? 'OK' : 'ERR'), res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-qbit-proximity').onclick = () => {
+    const mod = document.getElementById('drv-qbit-module').value;
+    const val = document.getElementById('drv-qbit-power').value;
+    const res = MachineDriverStack.QbitProximityModule.setProximity(mod, val);
+    qbitInit();
+    mcpLog('QBIT proximity ' + mod + ' = ' + res.power + ' level=' + res.alienXLevel, 'out');
+  };
+  document.getElementById('drv-qbit-intitialize').onclick = () => {
+    const res = MachineDriverStack.QbitProximityModule.intitializeAlienX();
+    qbitInit();
+    mcpLog('QBIT intitialize Alien X => ' + (res.ok ? 'OK: ' + res.alienX : 'ERR: ' + res.error), res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-qbit-fastlaunch').onclick = () => {
+    const res = MachineDriverStack.QbitProximityModule.fastLaunch();
+    qbitInit();
+    mcpLog('QBIT fast launch => ' + (res.ok ? 'OK: ' + res.launch : 'ERR: ' + res.error), res.ok ? 'result' : 'err');
+  };
+
+  /* ================= SUBSTANCE XGREYLEYWIN WIRING ================= */
+  function substanceInit() {
+    const sel = document.getElementById('drv-sub-modder');
+    // no select needed, text input
+    drvRenderSubstance();
+  }
+  function drvRenderSubstance() {
+    const st = MachineDriverStack.SubstanceXgreyleywin.status();
+    const ls = st.liquidSubstrate;
+    const el = document.getElementById('drv-substance-status');
+    el.textContent = `SUBSTANCE: ${st.substance} | modder=${st.modder.present?'present '+st.modder.id:'not present'} | trust=${st.modder.trustLevel} | model=${st.model.mode} (scale=${st.model.scale}) | tensor=${st.customizer.tensor.x.toFixed(1)},${st.customizer.tensor.y.toFixed(1)},${st.customizer.tensor.z.toFixed(1)},${st.customizer.tensor.w.toFixed(1)} | locked=${st.customizer.tensorLocked} | liquid=${ls.active?'ON':'off'} flavor=${ls.flavor} vol=${ls.particleVolume.toFixed(2)}`;
+    el.style.color = st.model.mode === 'full' ? '#0ff' : st.modder.present ? '#ff0' : '#555';
+    document.getElementById('drv-sub-convert').disabled = !st.modder.present || st.modder.trustLevel < 50 || st.model.mode === 'full';
+    document.getElementById('drv-sub-revert').disabled = st.model.mode === 'localised';
+  }
+  document.getElementById('drv-sub-checkmodder').onclick = () => {
+    const mid = document.getElementById('drv-sub-modder').value.trim();
+    const res = MachineDriverStack.SubstanceXgreyleywin.checkModder(mid || null);
+    drvRenderSubstance();
+    mcpLog('SUBSTANCE check modder ' + (mid || 'none') + ' => trust=' + res.trustLevel + ' present=' + res.modderPresent, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-sub-settensor').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.setTensor(
+      document.getElementById('drv-sub-tx').value,
+      document.getElementById('drv-sub-ty').value,
+      document.getElementById('drv-sub-tz').value,
+      document.getElementById('drv-sub-tw').value
+    );
+    drvRenderSubstance();
+    mcpLog('SUBSTANCE set tensor => ' + JSON.stringify(res.tensor), 'out');
+  };
+  document.getElementById('drv-sub-locktensor').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.lockTensor();
+    drvRenderSubstance();
+    mcpLog('SUBSTANCE tensor locked => ' + res.tensorLocked, 'out');
+  };
+  document.getElementById('drv-sub-unlocktensor').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.unlockTensor();
+    drvRenderSubstance();
+    mcpLog('SUBSTANCE tensor unlocked => ' + res.tensorLocked, 'out');
+  };
+  document.getElementById('drv-sub-convert').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.convertLocalisedToFull();
+    drvRenderSubstance();
+    mcpLog('SUBSTANCE convert localised→full => scale=' + res.scale + ' complete=' + res.complete, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-sub-revert').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.revertToLocalised();
+    drvRenderSubstance();
+    mcpLog('SUBSTANCE revert to localised => scale=' + res.scale, 'out');
+  };
+
+  /* ================= LIQUID SUBSTRATE WIRING ================= */
+  function drvRenderLiquid() {
+    const st = MachineDriverStack.SubstanceXgreyleywin.liquidSubstrate.status();
+    const el = document.getElementById('drv-liquid-status');
+    el.textContent = `LIQUID SUBSTRATE: ${st.active?'ON':'off'} | form: ${st.form} | flavor: ${st.flavor} | volume: ${st.particleVolume.toFixed(2)} | freq: ${st.resonatingFrequency.toFixed(0)}Hz | smoothTensors=${st.smoothTensors} | vertilize=${st.vertilize}`;
+    el.style.color = st.active ? '#0ff' : '#555';
+    document.getElementById('drv-liquid-vertilize').disabled = !st.active;
+    document.getElementById('drv-liquid-smooth').disabled = !st.active;
+    document.getElementById('drv-liquid-setflavor').disabled = !st.active;
+    document.getElementById('drv-liquid-setfreq').disabled = !st.active;
+    document.getElementById('drv-liquid-settexture').disabled = !st.active;
+  }
+  document.getElementById('drv-liquid-activate').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.liquidSubstrate.activate();
+    drvRenderLiquid();
+    drvRenderSubstance();
+    mcpLog('LIQUID SUBSTRATE activate => flavor=' + res.flavor + ' active=' + res.active, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-liquid-vertilize').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.liquidSubstrate.vertilizeVolume();
+    drvRenderLiquid();
+    mcpLog('LIQUID vertilize volume => ' + res.particleVolume.toFixed(2) + ' freq=' + res.resonatingFrequency.toFixed(0) + 'Hz', 'out');
+  };
+  document.getElementById('drv-liquid-smooth').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.liquidSubstrate.toggleSmoothTensors();
+    drvRenderLiquid();
+    mcpLog('LIQUID smooth tensors => ' + res.smoothTensors, 'out');
+  };
+  document.getElementById('drv-liquid-setflavor').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.liquidSubstrate.setFlavor(document.getElementById('drv-liquid-flavor').value);
+    drvRenderLiquid();
+    mcpLog('LIQUID set flavor => ' + res.flavor, 'out');
+  };
+  document.getElementById('drv-liquid-setfreq').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.liquidSubstrate.setResonatingFrequency(document.getElementById('drv-liquid-freq').value);
+    drvRenderLiquid();
+    mcpLog('LIQUID set resonating freq => ' + res.resonatingFrequency.toFixed(0) + 'Hz', 'out');
+  };
+  document.getElementById('drv-liquid-settexture').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.liquidSubstrate.setVariantTexture(
+      document.getElementById('drv-liquid-variant').value,
+      document.getElementById('drv-liquid-texture').value
+    );
+    drvRenderLiquid();
+    mcpLog('LIQUID set texture => ' + res.variant + '=' + res.materialTexture, res.ok ? 'result' : 'err');
+  };
+
+  /* ================= LEECHSEED WIRING ================= */
+  function drvRenderSeed() {
+    const st = MachineDriverStack.SubstanceXgreyleywin.seedConfig.status();
+    const el = document.getElementById('drv-seed-status');
+    el.textContent = `SEED: ${st.seedName} | ${st.planted ? 'planted' : 'not planted'} | red particles: ${st.redParticles} | tables spawned: ${st.variantTablesSpawned}`;
+    el.style.color = st.planted ? '#0ff' : '#555';
+    document.getElementById('drv-seed-spawn').disabled = !st.planted;
+  }
+  document.getElementById('drv-seed-plant').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.seedConfig.plant();
+    drvRenderSeed();
+    mcpLog('SEED plant leechseed => planted=' + res.planted, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-seed-spawn').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.seedConfig.spawnTable('red');
+    drvRenderSeed();
+    mcpLog('SEED spawn table => ' + (res.ok ? 'VT-' + res.table.id + ' from ' + res.table.source : 'ERR: ' + res.error), res.ok ? 'result' : 'err');
+  };
+
+  /* ================= TONS PACKAGE WIRING ================= */
+  function drvRenderTons() {
+    const st = MachineDriverStack.SubstanceXgreyleywin.tonsPackage.status();
+    const el = document.getElementById('drv-tons-status');
+    el.textContent = `TONS PACKAGE: ${st.active ? 'ON' : 'off'} | tiny seeds replaced: ${st.tinySeedsReplaced} | mana: ${st.manaPool}/${st.maxMana} | units: ${st.units}/${st.unitCap}`;
+    el.style.color = st.active ? '#0ff' : '#555';
+    document.getElementById('drv-tons-recharge').disabled = !st.active;
+    document.getElementById('drv-tons-units-set').disabled = !st.active;
+    document.getElementById('drv-tons-spend-btn').disabled = !st.active;
+  }
+  document.getElementById('drv-tons-activate').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.tonsPackage.activate();
+    drvRenderTons();
+    drvRenderSubstance();
+    mcpLog('TONS activate => tiny seeds replaced=' + res.tinySeedsReplaced + ' mana=' + res.manaPool + ' units=' + res.units, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-tons-recharge').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.tonsPackage.rechargeMana();
+    drvRenderTons();
+    mcpLog('TONS recharge mana => ' + res.manaPool + '/' + res.maxMana, 'out');
+  };
+  document.getElementById('drv-tons-units-set').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.tonsPackage.setUnits(document.getElementById('drv-tons-units').value);
+    drvRenderTons();
+    mcpLog('TONS set units => ' + res.units + ' mana=' + res.manaPool, 'out');
+  };
+  document.getElementById('drv-tons-spend-btn').onclick = () => {
+    const res = MachineDriverStack.SubstanceXgreyleywin.tonsPackage.spendMana(document.getElementById('drv-tons-spend').value);
+    drvRenderTons();
+    mcpLog('TONS spend mana => spent=' + res.spent + ' remaining=' + res.remaining, res.ok ? 'result' : 'err');
+  };
+
+  /* ================= ASMODIUS LICENCE WRITER WIRING ================= */
+  function drvRenderAsmodius() {
+    const st = MachineDriverStack.AsomdiusLicenseWriter.status();
+    const el = document.getElementById('drv-asmodius-status');
+    el.textContent = `ASMODIUS: ${st.licenceWriter.valid ? 'licenced' : 'no licence'} | issued to: ${st.licenceWriter.issuedTo || 'none'} | keyphrase: ${st.licenceWriter.keyphrase || 'none'} | btc: ${st.btc.address || 'none'}`;
+    el.style.color = st.licenceWriter.valid ? '#0ff' : '#555';
+  }
+  document.getElementById('drv-asmod-write').onclick = () => {
+    const res = MachineDriverStack.AsomdiusLicenseWriter.writeLicence(
+      document.getElementById('drv-asmod-issued').value,
+      document.getElementById('drv-asmod-key').value
+    );
+    drvRenderAsmodius();
+    mcpLog('ASMODIUS write licence => issued to=' + res.issuedTo + ' keyphrase=' + res.keyphrase + ' valid=' + res.valid, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-asmod-btc').onclick = () => {
+    const res = MachineDriverStack.AsomdiusLicenseWriter.btcCommand(
+      document.getElementById('drv-asmod-btc-cmd').value,
+      document.getElementById('drv-asmod-btc-arg').value ? { arg: document.getElementById('drv-asmod-btc-arg').value } : {}
+    );
+    drvRenderAsmodius();
+    mcpLog('ASMODIUS btc => ' + res.command + ' ' + (res.address || res.satoshi !== undefined ? res.satoshi : '') , res.ok ? 'result' : 'err');
+  };
+
+  /* ================= HIDDEN CYPHER WIRING ================= */
+  function drvRenderCipher() {
+    const st = MachineDriverStack.HiddenCipher.status();
+    const el = document.getElementById('drv-cipher-status');
+    el.textContent = `CYPHER: hidden | secrets: belagore/belacore/belcusbelacus | active: ${st.activeSecret||'none'} | decrypted: ${st.decrypted}`;
+    el.style.color = st.decrypted ? '#0ff' : '#555';
+    document.getElementById('drv-cipher-encrypt').disabled = !st.decrypted;
+    document.getElementById('drv-cipher-decrypt').disabled = !st.decrypted;
+  }
+  document.getElementById('drv-cipher-decode').onclick = () => {
+    const res = MachineDriverStack.HiddenCipher.decode(document.getElementById('drv-cipher-secret').value);
+    drvRenderCipher();
+    mcpLog('CYPHER decode => ' + (res.ok ? res.cipher+' t'+res.tier : 'ERR: '+res.error), res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-cipher-encrypt').onclick = () => {
+    const res = MachineDriverStack.HiddenCipher.encrypt(document.getElementById('drv-cipher-enc').value);
+    drvRenderCipher();
+    mcpLog('CYPHER encrypt => cipher=' + res.cipher, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-cipher-decrypt').onclick = () => {
+    const res = MachineDriverStack.HiddenCipher.decrypt(document.getElementById('drv-cipher-dec').value);
+    drvRenderCipher();
+    mcpLog('CYPHER decrypt => ' + (res.ok ? res.decrypted : 'ERR: '+res.error), res.ok ? 'result' : 'err');
+  };
+
+  /* ================= ENDORSMET SYSTEM WIRING ================= */
+  function drvRenderEndorsmet() {
+    const st = MachineDriverStack.EndorsmetSystem.status();
+    const el = document.getElementById('drv-endorsmet-status');
+    el.textContent = `ENDORSMET: ${st.endorsmet.placed ? 'placed ' + st.endorsmet.placementId : 'not placed'} | endergod: ${st.endergod.sovereign ? st.endergod.name : 'not enthroned'} | endig: stage ${st.endig.stage}${st.endig.terminated ? ' TERMINATED' : ''} | endimium mass: ${st.endimium.mass}/${st.endimium.maxMass}`;
+    el.style.color = st.endorsmet.placed && st.endergod.sovereign ? '#0ff' : '#555';
+    document.getElementById('drv-end-endig').disabled = st.endig.terminated;
+  }
+  document.getElementById('drv-end-place').onclick = () => {
+    const res = MachineDriverStack.EndorsmetSystem.placeEndorsmet(
+      document.getElementById('drv-end-loc').value,
+      document.getElementById('drv-end-tier').value
+    );
+    drvRenderEndorsmet();
+    mcpLog('ENDORSMET place => ' + res.placementId + ' loc=' + res.location + ' tier=' + res.tier, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-end-enthrone').onclick = () => {
+    const res = MachineDriverStack.EndorsmetSystem.enthroneEndergod(
+      document.getElementById('drv-end-god-name').value,
+      document.getElementById('drv-end-god-realm').value,
+      document.getElementById('drv-end-god-auth').value
+    );
+    drvRenderEndorsmet();
+    mcpLog('ENDORSMET enthrone => ' + res.name + ' realm=' + res.realm + ' auth=' + res.authority, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-end-endig').onclick = () => {
+    const res = MachineDriverStack.EndorsmetSystem.endigAdvance(document.getElementById('drv-end-endig-reason').value);
+    drvRenderEndorsmet();
+    mcpLog('ENDIG advance => stage=' + res.stage + ' terminated=' + res.terminated + ' reason=' + res.reason, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-end-endig-reset').onclick = () => {
+    const res = MachineDriverStack.EndorsmetSystem.endigReset();
+    drvRenderEndorsmet();
+    mcpLog('ENDIG reset => ' + res.endigReset, 'out');
+  };
+  document.getElementById('drv-end-accumulate').onclick = () => {
+    const res = MachineDriverStack.EndorsmetSystem.accumulateEndimium(document.getElementById('drv-end-imium-amt').value);
+    drvRenderEndorsmet();
+    mcpLog('ENDIMIUM accumulate => amount=' + res.accumulated + ' mass=' + res.mass + '/' + res.maxMass, 'out');
+  };
+  document.getElementById('drv-end-imium-dens-btn').onclick = () => {
+    const res = MachineDriverStack.EndorsmetSystem.setEndimiumDensity(document.getElementById('drv-end-imium-dens').value);
+    drvRenderEndorsmet();
+    mcpLog('ENDIMIUM density => ' + res.density + ' mass=' + res.mass, 'out');
+  };
+
+  /* ================= ATOMICUS CODES WIRING ================= */
+  function drvRenderAtomicus() {
+    const st = MachineDriverStack.AtomicusCodes.status();
+    const el = document.getElementById('drv-atomicus-status');
+    el.textContent = `ATOMICUS: ${st.jack.active ? 'JACK ACTIVE' : 'off'} | traits: ${st.jack.traits.length} | stack: ${st.stackSize}/${st.stackMax} | pool: ${st.atomicPool} | processor: ${st.processorCore.mode}`;
+    el.style.color = st.jack.active ? '#0ff' : '#555';
+    document.getElementById('drv-atomic-push').disabled = st.stackSize >= st.stackMax;
+  }
+  document.getElementById('drv-atomic-assign').onclick = () => {
+    const res = MachineDriverStack.AtomicusCodes.assignAtomicCode(
+      document.getElementById('drv-atomic-trait').value,
+      document.getElementById('drv-atomic-val').value
+    );
+    drvRenderAtomicus();
+    mcpLog('ATOMICUS assign => trait=' + res.trait + ' value=' + res.value + ' code=' + res.code, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-atomic-jack').onclick = () => {
+    const res = MachineDriverStack.AtomicusCodes.jackActivate();
+    drvRenderAtomicus();
+    mcpLog('ATOMICUS JACK activate => active=' + res.active + ' pool=' + res.pool + ' traits=' + res.traits.join(','), 'out');
+  };
+  document.getElementById('drv-atomic-push').onclick = () => {
+    const res = MachineDriverStack.AtomicusCodes.stackPush(document.getElementById('drv-atomic-trait').value || 'CODE');
+    drvRenderAtomicus();
+    mcpLog('ATOMICUS stack push => ' + res.pushed + ' size=' + res.stackSize, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-atomic-pop').onclick = () => {
+    const res = MachineDriverStack.AtomicusCodes.stackPop();
+    drvRenderAtomicus();
+    mcpLog('ATOMICUS stack pop => ' + res.popped + ' size=' + res.stackSize, 'out');
+  };
+  document.getElementById('drv-atomic-clear').onclick = () => {
+    const res = MachineDriverStack.AtomicusCodes.stackClear();
+    drvRenderAtomicus();
+    mcpLog('ATOMICUS stack clear => size=' + res.stackSize, 'out');
+  };
+  document.getElementById('drv-atomic-setlimit').onclick = () => {
+    const res = MachineDriverStack.AtomicusCodes.setMaximuslimit(document.getElementById('drv-atomic-limit').value);
+    drvRenderAtomicus();
+    mcpLog('ATOMICUS set limit => ' + res.maximuslimit, 'out');
+  };
+  document.getElementById('drv-atomic-proc-mode-btn').onclick = () => {
+    const res = MachineDriverStack.AtomicusCodes.setProcessorMode(document.getElementById('drv-atomic-proc-mode').value);
+    drvRenderAtomicus();
+    mcpLog('ATOMICUS processor mode => ' + res.mode + ' cycles=' + res.cycles, 'out');
+  };
+  document.getElementById('drv-atomic-cycle').onclick = () => {
+    const res = MachineDriverStack.AtomicusCodes.processorCycle();
+    drvRenderAtomicus();
+    mcpLog('ATOMICUS processor cycle => cycles=' + res.cycles, 'out');
+  };
+
+  /* ================= ARTIFACT INJECTOR WIRING ================= */
+  function drvRenderArtifact() {
+    const st = MachineDriverStack.ArtifactInjector.status();
+    const el = document.getElementById('drv-artifact-status');
+    el.textContent = `ARTIFACT: ${st.artifactCount} artifacts | ${st.barCount}/${st.maxBars} bars | injections: ${st.injectionCount} | active: ${st.activeBars}`;
+    el.style.color = st.injectionCount > 0 ? '#0ff' : '#555';
+    document.getElementById('drv-art-bar').disabled = st.barCount >= st.maxBars;
+  }
+  document.getElementById('drv-art-create').onclick = () => {
+    const res = MachineDriverStack.ArtifactInjector.createArtifact(
+      document.getElementById('drv-art-id').value,
+      document.getElementById('drv-art-content').value,
+      document.getElementById('drv-art-format').value
+    );
+    drvRenderArtifact();
+    mcpLog('ARTIFACT create => ' + res.id + ' format=' + res.format, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-art-bar').onclick = () => {
+    const res = MachineDriverStack.ArtifactInjector.createTocodeBar(
+      document.getElementById('drv-art-id').value,
+      document.getElementById('drv-art-format').value,
+      document.getElementById('drv-art-content').value
+    );
+    drvRenderArtifact();
+    mcpLog('ARTIFACT bar => ' + res.bar.id + ' format=' + res.bar.format, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-art-inject').onclick = () => {
+    const res = MachineDriverStack.ArtifactInjector.injectBar(document.getElementById('drv-art-id').value);
+    if (!res.ok) {
+      const r2 = MachineDriverStack.ArtifactInjector.injectArtifact(document.getElementById('drv-art-id').value);
+      drvRenderArtifact();
+      mcpLog('ARTIFACT inject => ' + (r2.ok ? r2.artifactId : 'ERR: ' + r2.error), r2.ok ? 'result' : 'err');
+      return;
+    }
+    drvRenderArtifact();
+    mcpLog('ARTIFACT inject bar => ' + res.barId + ' format=' + res.format, 'out');
+  };
+  document.getElementById('drv-art-fast').onclick = () => {
+    const res = MachineDriverStack.ArtifactInjector.fastInject(document.getElementById('drv-art-id').value);
+    drvRenderArtifact();
+    mcpLog('ARTIFACT fast inject => ' + (res.ok ? res.barId || res.artifactId : 'ERR: ' + res.error), res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-art-list').onclick = () => {
+    const list = MachineDriverStack.ArtifactInjector.list();
+    mcpLog('ARTIFACT list => ' + list.artifactCount + ' artifacts, ' + list.barCount + ' bars, ' + list.injectionCount + ' injections', 'out');
+    console.log('ARTIFACT LIST:', list);
+  };
+  document.getElementById('drv-art-status').onclick = () => {
+    const st = MachineDriverStack.ArtifactInjector.status();
+    mcpLog('ARTIFACT status => artifacts=' + st.artifactCount + ' bars=' + st.barCount + ' injections=' + st.injectionCount, 'out');
+  };
+
+  /* ================= OMNITRIX FINDER WIRING ================= */
+  function drvRenderOmnitrix() {
+    const st = MachineDriverStack.OmnitrixFinder.status();
+    const el = document.getElementById('drv-omnitrix-status');
+    el.textContent = `OMNITRIX: ${st.layout.active ? 'triggered' : 'not triggered'} | query: ${st.currentQuery.from}→${st.currentQuery.to} | variants: ${st.variantCount} | multi dim: ${st.multiDimEnabled}`;
+    el.style.color = st.layout.active ? '#0ff' : '#555';
+    document.getElementById('drv-omni-variant').disabled = !st.multiDimEnabled;
+    document.getElementById('drv-omni-mod').disabled = !st.multiDimEnabled;
+  }
+  document.getElementById('drv-omni-trigger').onclick = () => {
+    const res = MachineDriverStack.OmnitrixFinder.triggerFinder();
+    drvRenderOmnitrix();
+    mcpLog('OMNITRIX trigger => active=' + res.active + ' multiDim=' + res.multiDim, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-omni-multidim').onclick = () => {
+    const res = MachineDriverStack.OmnitrixFinder.enableMultiDim();
+    drvRenderOmnitrix();
+    mcpLog('OMNITRIX multi dim => ' + res.multiDimEnabled, 'out');
+  };
+  document.getElementById('drv-omni-query').onclick = () => {
+    const res = MachineDriverStack.OmnitrixFinder.queryAlien(
+      document.getElementById('drv-omni-from').value,
+      document.getElementById('drv-omni-to').value
+    );
+    drvRenderOmnitrix();
+    mcpLog('OMNITRIX query => ' + res.query.from + '→' + res.query.to + ' matches=' + res.query.matches.length + ' ghost=' + (res.query.ghost ? res.query.ghost.name : 'none'), 'out');
+  };
+  document.getElementById('drv-omni-variant').onclick = () => {
+    let modData = {};
+    try { modData = JSON.parse(document.getElementById('drv-omni-mod').value || '{}'); } catch (e) { modData = {}; }
+    const res = MachineDriverStack.OmnitrixFinder.createVariantInstance(
+      document.getElementById('drv-omni-alien').value,
+      document.getElementById('drv-omni-dim').value,
+      modData
+    );
+    drvRenderOmnitrix();
+    mcpLog('OMNITRIX variant => ' + (res.ok ? res.instance.id + ' dim=' + res.instance.dimension : 'ERR: ' + res.error), res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-omni-mod').onclick = () => {
+    let modData = {};
+    try { modData = JSON.parse(document.getElementById('drv-omni-mod').value || '{}'); } catch (e) { modData = {}; }
+    const res = MachineDriverStack.OmnitrixFinder.modVariantInstance(
+      document.getElementById('drv-omni-inst').value,
+      modData
+    );
+    drvRenderOmnitrix();
+    mcpLog('OMNITRIX mod variant => ' + (res.ok ? res.instance.id : 'ERR: ' + res.error), res.ok ? 'result' : 'err');
+  };
+
+  function drvRenderGate() {
+    const st = MachineDriverStack.HiddenGateSystem.status();
+    const el = document.getElementById('drv-gate-status');
+    el.textContent = `GATE: ${st.hiddenGateCount} hidden | ${st.jailPortCount} jail | total ${st.totalPorts} | phrase algo: ${st.systemName}`;
+    el.style.color = '#0ff';
+  }
+  document.getElementById('drv-gate-expose').onclick = () => {
+    const secret = document.getElementById('drv-gate-secret').value || 'belagore';
+    const res = MachineDriverStack.HiddenGateSystem.exposePortsViaPhrase(secret);
+    drvRenderGate();
+    mcpLog('GATE expose => algo=' + res.algo.phrase + ' access=' + res.algo.access + ' exposed=' + res.total, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-gate-query').onclick = () => {
+    const filter = document.getElementById('drv-gate-filter').value;
+    const res = MachineDriverStack.HiddenGateSystem.queryPorts(filter);
+    drvRenderGate();
+    mcpLog('GATE query => ' + res.length + ' ports' + (filter ? ' filter=' + filter : ''), 'out');
+  };
+
+  function drvRenderAvatar() {
+    const st = MachineDriverStack.AvatarPartitionSystem.status();
+    const el = document.getElementById('drv-avatar-status');
+    el.textContent = `AVATAR PARTITION: ${st.slotCount} slots | assigned ${st.assignedCount} | discovered ${st.discoveredCount} | empty ${st.emptyCount} | transitions ${st.transitionCount}`;
+    el.style.color = '#0ff';
+  }
+  document.getElementById('drv-avatar-decode').onclick = () => {
+    const encoded = document.getElementById('drv-avatar-encoded').value || '';
+    const res = MachineDriverStack.AvatarPartitionSystem.baseDecode(encoded);
+    drvRenderAvatar();
+    mcpLog('AVATAR base decode => alienName=' + res.alienName + ' virtualState=' + res.virtualState + ' slotIndex=' + res.slotIndex, 'out');
+  };
+  document.getElementById('drv-avatar-assign').onclick = () => {
+    const slotIndex = Number(document.getElementById('drv-avatar-slot').value);
+    const avatarId = document.getElementById('drv-avatar-id').value || 'unknown';
+    const avatarName = document.getElementById('drv-avatar-name').value || 'UNKNOWN';
+    const res = MachineDriverStack.AvatarPartitionSystem.assignAvatarToSlot(slotIndex, avatarId, avatarName);
+    drvRenderAvatar();
+    mcpLog('AVATAR assign => slot=' + res.slotIndex + ' avatar=' + res.avatarId + ' vstate=' + res.virtualState, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-avatar-swap').onclick = () => {
+    const fromSlot = Number(document.getElementById('drv-avatar-from').value);
+    const toSlot = Number(document.getElementById('drv-avatar-to').value);
+    const res = MachineDriverStack.AvatarPartitionSystem.swapPartition(fromSlot, toSlot);
+    drvRenderAvatar();
+    mcpLog('AVATAR swap => from=' + fromSlot + ' to=' + toSlot, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-avatar-transition').onclick = () => {
+    const encoded = document.getElementById('drv-avatar-topsops').value || '';
+    const avatarId = document.getElementById('drv-avatar-id').value || 'unknown';
+    const avatarName = document.getElementById('drv-avatar-name').value || 'UNKNOWN';
+    const res = MachineDriverStack.AvatarPartitionSystem.transitionTopsops(encoded, avatarId, avatarName);
+    drvRenderAvatar();
+    mcpLog('AVATAR transition => outcomes=' + res.transition.outcomeCount + ' assigned=' + res.transition.assigned.ok, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-avatar-query-slot').onclick = () => {
+    const slotIndex = Number(document.getElementById('drv-avatar-query').value);
+    const res = MachineDriverStack.AvatarPartitionSystem.querySlot(slotIndex);
+    drvRenderAvatar();
+    mcpLog('AVATAR query slot=' + slotIndex + ' assigned=' + res.slot.assigned + ' avatar=' + (res.slot.avatarId || 'none'), res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-avatar-discover').onclick = () => {
+    const filter = document.getElementById('drv-avatar-tagfilter').value;
+    const res = MachineDriverStack.AvatarPartitionSystem.discoverTags(filter);
+    drvRenderAvatar();
+    mcpLog('AVATAR discover tags => count=' + res.length + (filter ? ' filter=' + filter : ''), 'out');
+  };
+
+  function drvRenderHash() {
+    const st = MachineDriverStack.HashBlockSystem.status();
+    const el = document.getElementById('drv-hash-status');
+    el.textContent = `HASH BLOCK: ${st.blockCount} blocks | agent tag: ${st.agentTag} | node: ${st.nodeServerUrl}`;
+    el.style.color = '#0ff';
+  }
+  document.getElementById('drv-hash-generate').onclick = async () => {
+    const agentTag = document.getElementById('drv-hash-agent').value || 'omnitrix-agent-01';
+    let payload = {};
+    try { payload = JSON.parse(document.getElementById('drv-hash-payload').value || '{}'); } catch (e) { payload = {}; }
+    const res = MachineDriverStack.HashBlockSystem.generateSavePrintProxy(agentTag, payload);
+    drvRenderHash();
+    mcpLog('HASH BLOCK => id=' + res.block.blockId + ' hash=' + res.block.hash + ' saved=' + res.saved.ok + ' proxied=' + res.proxied.ok + ' printed=' + res.printed.sent, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-hash-print').onclick = async () => {
+    const st = MachineDriverStack.HashBlockSystem.status();
+    if (!st.lastBlock) { mcpLog('HASH BLOCK print => no block to print', 'err'); return; }
+    const res = await MachineDriverStack.HashBlockSystem.printToNodeServer(st.lastBlock);
+    drvRenderHash();
+    mcpLog('HASH BLOCK print => sent=' + res.sent + ' status=' + res.status, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-hash-proxy').onclick = () => {
+    const st = MachineDriverStack.HashBlockSystem.status();
+    if (!st.lastBlock) { mcpLog('HASH BLOCK proxy => no block to proxy', 'err'); return; }
+    const agentTag = document.getElementById('drv-hash-agent').value || 'omnitrix-agent-01';
+    const res = MachineDriverStack.HashBlockSystem.proxyViaAgentTag(st.lastBlock, agentTag);
+    drvRenderHash();
+    mcpLog('HASH BLOCK proxy => proxyId=' + res.proxy.proxyId + ' agentTag=' + res.proxy.agentTag, res.ok ? 'result' : 'err');
+  };
+  document.getElementById('drv-hash-status-btn').onclick = () => {
+    const st = MachineDriverStack.HashBlockSystem.status();
+    drvRenderHash();
+    mcpLog('HASH BLOCK status => blocks=' + st.blockCount + ' last=' + (st.lastBlock ? st.lastBlock.blockId : 'none'), 'out');
+  };
+
+  /* ================= ARK MONITOR WIRING ================= */
+  function arkRender() {
+    MachineDriverStack.ArkMonitor.render({
+      krnl: document.getElementById('ark-krnl'),
+      tick: document.getElementById('ark-tick'),
+      dockerq: document.getElementById('ark-dockerq'),
+      sorted: document.getElementById('ark-sorted'),
+      stats: document.getElementById('ark-stats'),
+    });
+  }
+  document.getElementById('ark-tick-tick').onclick = () => {
+    MachineDriverStack.ArkMonitor.tick();
+    arkRender();
+    mcpLog('Ark tick packet emitted.', 'out');
+  };
+  document.getElementById('ark-krnl-inject').onclick = () => {
+    MachineDriverStack.ArkMonitor.krnlInject('krnl', 'kernel data packet');
+    arkRender();
+    mcpLog('Ark krnl packet injected.', 'out');
+  };
+  document.getElementById('ark-sort').onclick = () => {
+    const key = document.getElementById('ark-passkey').value;
+    const res = MachineDriverStack.ArkMonitor.sortDocker(key);
+    arkRender();
+    mcpLog('Docker sort => ' + (res.ok ? 'OK (' + res.sorted.length + ' events)' : 'ERR: ' + res.error), res.ok ? 'result' : 'err');
+  };
+  document.getElementById('ark-enter-passkey').onclick = () => {
+    const res = MachineDriverStack.ArkMonitor.enterPasskey(document.getElementById('ark-passkey').value);
+    mcpLog('ARK passkey => ' + (res.ok ? 'accepted (sorter: ' + res.sorter + ')' : 'ERR: ' + res.error), res.ok ? 'result' : 'err');
+  };
+  document.getElementById('ark-clear').onclick = () => {
+    MachineDriverStack.ArkMonitor.clear();
+    arkRender();
+    mcpLog('Ark monitor cleared.', 'sys');
+  };
+
+  /* ================= HOLOGRAPHIC TOUCHSCREEN + MCP COMMAND ROUTER ================= */
+  function cmdLog(text, type='exec') {
+    const d = document.createElement('div');
+    d.className = 'entry ' + type;
+    d.textContent = new Date().toLocaleTimeString().split(' ')[0] + ' ' + text;
+    const log = document.getElementById('touch-cmd-log');
+    log.appendChild(d);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  const AVATAR_BY_ID = {};
+  AVATAR_BLOCKS.forEach(b => { AVATAR_BY_ID[b.id] = b; });
+
+  function cmdProjectAvatar(id) {
+    const b = AVATAR_BY_ID[id];
+    if (!b) return { ok: false, error: 'unknown avatar: ' + id };
+    projectAvatar(b);
+    return { ok: true, action: 'project_avatar', avatar: b.name, id: b.id };
+  }
+  function cmdStoreAvatar(slot) {
+    if (!state.currentAvatar) return { ok: false, error: 'no active avatar' };
+    storeAvatar(slot);
+    return { ok: true, action: 'store_avatar', slot, avatar: state.currentAvatar.name };
+  }
+  function cmdRecallAvatar(slot) {
+    const b = state.store[slot];
+    if (!b) return { ok: false, error: 'SLOT ' + slot + ' empty' };
+    projectAvatar(b);
+    return { ok: true, action: 'recall_avatar', slot, avatar: b.name };
+  }
+  function cmdSetMaterialMode(mode) {
+    if (!['solid','wire','holo'].includes(mode)) return { ok: false, error: 'bad mode' };
+    state.materialMode = mode;
+    applyMaterialMode();
+    return { ok: true, action: 'set_material_mode', mode };
+  }
+  function cmdToggleAutorotate() {
+    state.autorotate = !state.autorotate;
+    controls.autoRotate = state.autorotate;
+    els.btnAutorot.textContent = state.autorotate ? 'ON' : 'OFF';
+    els.btnAutorot.classList.toggle('selected', state.autorotate);
+    return { ok: true, action: 'toggle_autorotate', autorotate: state.autorotate };
+  }
+  function cmdResetView() {
+    controls.reset();
+    omnitrixGroup.rotation.set(-0.3, 0.4, 0);
+    return { ok: true, action: 'reset_view' };
+  }
+  function cmdSlotMode() {
+    const mode = toggleSlotMode();
+    return { ok: true, action: 'toggle_slot_mode', mode };
+  }
+  function cmdMechCompute() { mechCompute(); return { ok: true, action: 'mech_compute', state: mech ? mech.state() : null }; }
+  function cmdMechResonate() { const on = mech.toggleResonance(); mechRender(); return { ok: true, action: 'mech_resonate', resonance: on }; }
+  function cmdMechBell() { const msg = mech.vacuumDbSwapWithBell(); mechRender(); return { ok: true, action: 'mech_bell', msg }; }
+  function cmdMechCapture() { mech.toggleCoherentCapture(); mech.updateRout(); mechRender(); return { ok: true, action: 'mech_capture', capture: mech.coherentCapture, rout: mech.getRout() }; }
+
+  const CMD_ROUTER = {
+    project_avatar: (a) => cmdProjectAvatar(a.id || a.avatar),
+    project_heatblast: () => cmdProjectAvatar('heatblast'),
+    project_fourarms: () => cmdProjectAvatar('fourarms'),
+    project_xlr8: () => cmdProjectAvatar('xlr8'),
+    project_diamondhead: () => cmdProjectAvatar('diamondhead'),
+    project_diamond: () => cmdProjectAvatar('diamondhead'),
+    project_ghostfreak: () => cmdProjectAvatar('ghostfreak'),
+    project_ghost: () => cmdProjectAvatar('ghostfreak'),
+    store_avatar: (a) => cmdStoreAvatar(a.slot || 'A'),
+    recall_avatar: (a) => cmdRecallAvatar(a.slot || 'A'),
+    set_material_mode: (a) => cmdSetMaterialMode(a.mode),
+    mode_solid: () => cmdSetMaterialMode('solid'),
+    mode_wire: () => cmdSetMaterialMode('wire'),
+    mode_holo: () => cmdSetMaterialMode('holo'),
+    toggle_autorotate: cmdToggleAutorotate,
+    autorotate: cmdToggleAutorotate,
+    reset_view: cmdResetView,
+    toggle_slot_mode: cmdSlotMode,
+    slot_mode: cmdSlotMode,
+    mech_compute: cmdMechCompute,
+    mech_resonate: cmdMechResonate,
+    mech_bell: cmdMechBell,
+    mech_capture: cmdMechCapture,
+    ark_tick: () => { MachineDriverStack.ArkMonitor.tick(); arkRender(); return { ok: true, action: 'ark_tick' }; },
+    ark_krnl: () => { MachineDriverStack.ArkMonitor.krnlInject('krnl', 'kernel data packet'); arkRender(); return { ok: true, action: 'ark_krnl' }; },
+    ark_sort: (a) => { const res = MachineDriverStack.ArkMonitor.sortDocker(a.passkey); arkRender(); return { ok: true, action: 'ark_sort', ...res }; },
+    ark_clear: () => { MachineDriverStack.ArkMonitor.clear(); arkRender(); return { ok: true, action: 'ark_clear' }; },
+    ark_enter_passkey: (a) => { const res = MachineDriverStack.ArkMonitor.enterPasskey(a.key); return { ok: true, action: 'ark_enter_passkey', ...res }; },
+    melencoly: () => { const res = MachineDriverStack.MelencolyDreamshell.trigger(); arkRender(); return { ok: true, action: 'melencoly', pythonEnv: res.pythonEnv }; },
+    dreamshell: () => { const res = MachineDriverStack.MelencolyDreamshell.trigger(); arkRender(); return { ok: true, action: 'dreamshell', pythonEnv: res.pythonEnv }; },
+    spectral_start: () => { const res = MachineDriverStack.SpectralRangeServer.start(); return { ok: true, action: 'spectral_start', range: res.range, rule: res.rule }; },
+    spectral_status: () => { return { ok: true, action: 'spectral_status', status: MachineDriverStack.SpectralRangeServer.status() }; },
+    spectral_stop: () => { const res = MachineDriverStack.SpectralRangeServer.stop(); return { ok: true, action: 'spectral_stop', serverRunning: res.serverRunning }; },
+    spectral_fold: (a) => { const res = MachineDriverStack.SpectralRangeServer.fold(a.value || a.fold || 0); return { ok: true, action: 'spectral_fold', ...res }; },
+    spectral_lock: (a) => { const res = MachineDriverStack.SpectralRangeServer.lockCoordinates(a.x, a.y, a.z, a.spectral); return { ok: true, action: 'spectral_lock', ...res }; },
+    spectral_unlock: () => { const res = MachineDriverStack.SpectralRangeServer.unlockCoordinates(); return { ok: true, action: 'spectral_unlock', ...res }; },
+    qbit_install: (a) => { const res = MachineDriverStack.QbitProximityModule.install(a.module || a.id); return { ok: true, action: 'qbit_install', ...res }; },
+    qbit_uninstall: (a) => { const res = MachineDriverStack.QbitProximityModule.uninstall(a.module || a.id); return { ok: true, action: 'qbit_uninstall', ...res }; },
+    qbit_proximity: (a) => { const res = MachineDriverStack.QbitProximityModule.setProximity(a.module || a.id, a.value || a.power); return { ok: true, action: 'qbit_proximity', ...res }; },
+    qbit_intitialize: () => { const res = MachineDriverStack.QbitProximityModule.intitializeAlienX(); return { ok: true, action: 'qbit_intitialize', ...res }; },
+    qbit_fastlaunch: () => { const res = MachineDriverStack.QbitProximityModule.fastLaunch(); return { ok: true, action: 'qbit_fastlaunch', ...res }; },
+    qbit_status: () => { return { ok: true, action: 'qbit_status', status: MachineDriverStack.QbitProximityModule.status() }; },
+    substance_checkmodder: (a) => { const res = MachineDriverStack.SubstanceXgreyleywin.checkModder(a.modder || a.id); return { ok: true, action: 'substance_checkmodder', ...res }; },
+    substance_settensor: (a) => { const res = MachineDriverStack.SubstanceXgreyleywin.setTensor(a.x, a.y, a.z, a.w); return { ok: true, action: 'substance_settensor', ...res }; },
+    substance_locktensor: () => { const res = MachineDriverStack.SubstanceXgreyleywin.lockTensor(); return { ok: true, action: 'substance_locktensor', ...res }; },
+    substance_unlocktensor: () => { const res = MachineDriverStack.SubstanceXgreyleywin.unlockTensor(); return { ok: true, action: 'substance_unlocktensor', ...res }; },
+    substance_convert: () => { const res = MachineDriverStack.SubstanceXgreyleywin.convertLocalisedToFull(); return { ok: true, action: 'substance_convert', ...res }; },
+    substance_revert: () => { const res = MachineDriverStack.SubstanceXgreyleywin.revertToLocalised(); return { ok: true, action: 'substance_revert', ...res }; },
+    substance_status: () => { return { ok: true, action: 'substance_status', status: MachineDriverStack.SubstanceXgreyleywin.status() }; },
+    substance_activate_liquid: () => { const res = MachineDriverStack.SubstanceXgreyleywin.liquidSubstrate.activate(); return { ok: true, action: 'substance_activate_liquid', ...res }; },
+    substance_set_flavor: (a) => { const res = MachineDriverStack.SubstanceXgreyleywin.liquidSubstrate.setFlavor(a.flavor); return { ok: true, action: 'substance_set_flavor', ...res }; },
+    substance_set_variant_texture: (a) => { const res = MachineDriverStack.SubstanceXgreyleywin.liquidSubstrate.setVariantTexture(a.variant, a.texture); return { ok: true, action: 'substance_set_variant_texture', ...res }; },
+    substance_set_particle_volume: (a) => { const res = MachineDriverStack.SubstanceXgreyleywin.liquidSubstrate.setParticleVolume(a.volume); return { ok: true, action: 'substance_set_particle_volume', ...res }; },
+    substance_set_resonating_freq: (a) => { const res = MachineDriverStack.SubstanceXgreyleywin.liquidSubstrate.setResonatingFrequency(a.hz); return { ok: true, action: 'substance_set_resonating_freq', ...res }; },
+    substance_vertilize: () => { const res = MachineDriverStack.SubstanceXgreyleywin.liquidSubstrate.vertilizeVolume(); return { ok: true, action: 'substance_vertilize', ...res }; },
+    substance_toggle_smooth_tensors: () => { const res = MachineDriverStack.SubstanceXgreyleywin.liquidSubstrate.toggleSmoothTensors(); return { ok: true, action: 'substance_toggle_smooth_tensors', ...res }; },
+    substance_plant_seed: () => { const res = MachineDriverStack.SubstanceXgreyleywin.seedConfig.plant(); return { ok: true, action: 'substance_plant_seed', ...res }; },
+    substance_spawn_table: () => { const res = MachineDriverStack.SubstanceXgreyleywin.seedConfig.spawnTable('red'); return { ok: true, action: 'substance_spawn_table', ...res }; },
+    substance_seed_status: () => { return { ok: true, action: 'substance_seed_status', status: MachineDriverStack.SubstanceXgreyleywin.seedConfig.status() }; },
+    substance_tons_activate: () => { const res = MachineDriverStack.SubstanceXgreyleywin.tonsPackage.activate(); return { ok: true, action: 'substance_tons_activate', ...res }; },
+    substance_tons_units: (a) => { const res = MachineDriverStack.SubstanceXgreyleywin.tonsPackage.setUnits(a.units || a.count); return { ok: true, action: 'substance_tons_units', ...res }; },
+    substance_tons_spend: (a) => { const res = MachineDriverStack.SubstanceXgreyleywin.tonsPackage.spendMana(a.amount || a.mana); return { ok: true, action: 'substance_tons_spend', ...res }; },
+    substance_tons_recharge: () => { const res = MachineDriverStack.SubstanceXgreyleywin.tonsPackage.rechargeMana(); return { ok: true, action: 'substance_tons_recharge', ...res }; },
+    substance_tons_status: () => { return { ok: true, action: 'substance_tons_status', status: MachineDriverStack.SubstanceXgreyleywin.tonsPackage.status() }; },
+    asmodius_write_licence: (a) => { const res = MachineDriverStack.AsomdiusLicenseWriter.writeLicence(a.issuedTo || 'unknown', a.keyphrase); return { ok: true, action: 'asmodius_write_licence', ...res }; },
+    asmodius_ts_signature: (a) => { const res = MachineDriverStack.AsomdiusLicenseWriter.generateTypescriptSignature(a.payload || {}); return { ok: true, action: 'asmodius_ts_signature', signature: res }; },
+    asmodius_btc: (a) => { const res = MachineDriverStack.AsomdiusLicenseWriter.btcCommand(a.cmd, a.args || {}); return { ok: true, action: 'asmodius_btc', ...res }; },
+    asmodius_status: () => { return { ok: true, action: 'asmodius_status', status: MachineDriverStack.AsomdiusLicenseWriter.status() }; },
+    cipher_decode: (a) => { const res = MachineDriverStack.HiddenCipher.decode(a.secret || a.input); return { ok: true, action: 'cipher_decode', ...res }; },
+    cipher_encrypt: (a) => { const res = MachineDriverStack.HiddenCipher.encrypt(a.plaintext || a.text); return { ok: true, action: 'cipher_encrypt', ...res }; },
+    cipher_decrypt: (a) => { const res = MachineDriverStack.HiddenCipher.decrypt(a.ciphertext || a.text); return { ok: true, action: 'cipher_decrypt', ...res }; },
+    cipher_status: () => { return { ok: true, action: 'cipher_status', status: MachineDriverStack.HiddenCipher.status() }; },
+    endorsmet_place: (a) => { const res = MachineDriverStack.EndorsmetSystem.placeEndorsmet(a.location || 'origin', a.tier || 1); return { ok: true, action: 'endorsmet_place', ...res }; },
+    endorsmet_enthrone: (a) => { const res = MachineDriverStack.EndorsmetSystem.enthroneEndergod(a.name || 'Endergod', a.realm || 'void', a.authority || 50); return { ok: true, action: 'endorsmet_enthrone', ...res }; },
+    endorsmet_endig: (a) => { const res = MachineDriverStack.EndorsmetSystem.endigAdvance(a.reason); return { ok: true, action: 'endorsmet_endig', ...res }; },
+    endorsmet_endig_reset: () => { const res = MachineDriverStack.EndorsmetSystem.endigReset(); return { ok: true, action: 'endorsmet_endig_reset', ...res }; },
+    endorsmet_accumulate: (a) => { const res = MachineDriverStack.EndorsmetSystem.accumulateEndimium(a.amount || 1000); return { ok: true, action: 'endorsmet_accumulate', ...res }; },
+    endorsmet_density: (a) => { const res = MachineDriverStack.EndorsmetSystem.setEndimiumDensity(a.density || 1.0); return { ok: true, action: 'endorsmet_density', ...res }; },
+    endorsmet_status: () => { return { ok: true, action: 'endorsmet_status', status: MachineDriverStack.EndorsmetSystem.status() }; },
+    atomicus_assign_code: (a) => { const res = MachineDriverStack.AtomicusCodes.assignAtomicCode(a.trait, a.value); return { ok: true, action: 'atomicus_assign_code', ...res }; },
+    atomicus_jack_activate: () => { const res = MachineDriverStack.AtomicusCodes.jackActivate(); return { ok: true, action: 'atomicus_jack_activate', ...res }; },
+    atomicus_stack_push: (a) => { const res = MachineDriverStack.AtomicusCodes.stackPush(a.code); return { ok: true, action: 'atomicus_stack_push', ...res }; },
+    atomicus_stack_pop: () => { const res = MachineDriverStack.AtomicusCodes.stackPop(); return { ok: true, action: 'atomicus_stack_pop', ...res }; },
+    atomicus_stack_clear: () => { const res = MachineDriverStack.AtomicusCodes.stackClear(); return { ok: true, action: 'atomicus_stack_clear', ...res }; },
+    atomicus_set_limit: (a) => { const res = MachineDriverStack.AtomicusCodes.setMaximuslimit(a.limit); return { ok: true, action: 'atomicus_set_limit', ...res }; },
+    atomicus_processor_mode: (a) => { const res = MachineDriverStack.AtomicusCodes.setProcessorMode(a.mode || 'prose'); return { ok: true, action: 'atomicus_processor_mode', ...res }; },
+    atomicus_processor_cycle: () => { const res = MachineDriverStack.AtomicusCodes.processorCycle(); return { ok: true, action: 'atomicus_processor_cycle', ...res }; },
+    atomicus_status: () => { return { ok: true, action: 'atomicus_status', status: MachineDriverStack.AtomicusCodes.status() }; },
+    artifact_create: (a) => { const res = MachineDriverStack.ArtifactInjector.createArtifact(a.id, a.content, a.format); return { ok: true, action: 'artifact_create', ...res }; },
+    artifact_get: (a) => { const res = MachineDriverStack.ArtifactInjector.getArtifact(a.id); return { ok: true, action: 'artifact_get', ...res }; },
+    artifact_delete: (a) => { const res = MachineDriverStack.ArtifactInjector.deleteArtifact(a.id); return { ok: true, action: 'artifact_delete', ...res }; },
+    artifact_bar_create: (a) => { const res = MachineDriverStack.ArtifactInjector.createTocodeBar(a.id, a.format || 'javascript', a.content || ''); return { ok: true, action: 'artifact_bar_create', ...res }; },
+    artifact_bar_inject: (a) => { const res = MachineDriverStack.ArtifactInjector.injectBar(a.id); return { ok: true, action: 'artifact_bar_inject', ...res }; },
+    artifact_inject: (a) => { const res = MachineDriverStack.ArtifactInjector.injectArtifact(a.id); return { ok: true, action: 'artifact_inject', ...res }; },
+    artifact_fast_inject: (a) => { const res = MachineDriverStack.ArtifactInjector.fastInject(a.id); return { ok: true, action: 'artifact_fast_inject', ...res }; },
+    artifact_list: () => { return { ok: true, action: 'artifact_list', list: MachineDriverStack.ArtifactInjector.list() }; },
+    artifact_status: () => { return { ok: true, action: 'artifact_status', status: MachineDriverStack.ArtifactInjector.status() }; },
+    omnitrix_trigger: () => { const res = MachineDriverStack.OmnitrixFinder.triggerFinder(); return { ok: true, action: 'omnitrix_trigger', ...res }; },
+    omnitrix_query: (a) => { const res = MachineDriverStack.OmnitrixFinder.queryAlien(a.from, a.to); return { ok: true, action: 'omnitrix_query', ...res }; },
+    omnitrix_variant_create: (a) => { const res = MachineDriverStack.OmnitrixFinder.createVariantInstance(a.alienId, a.dimension, a.modData); return { ok: true, action: 'omnitrix_variant_create', ...res }; },
+    omnitrix_variant_mod: (a) => { const res = MachineDriverStack.OmnitrixFinder.modVariantInstance(a.instanceId, a.modData); return { ok: true, action: 'omnitrix_variant_mod', ...res }; },
+    omnitrix_multi_dim: () => { const res = MachineDriverStack.OmnitrixFinder.enableMultiDim(); return { ok: true, action: 'omnitrix_multi_dim', ...res }; },
+    omnitrix_status: () => { return { ok: true, action: 'omnitrix_status', status: MachineDriverStack.OmnitrixFinder.status() }; },
+    gate_expose: (a) => { const res = MachineDriverStack.HiddenGateSystem.exposePortsViaPhrase(a.secret || 'belagore'); return { ok: true, action: 'gate_expose', ...res }; },
+    gate_query: (a) => { const res = MachineDriverStack.HiddenGateSystem.queryPorts(a.filter); return { ok: true, action: 'gate_query', ports: res }; },
+    gate_phrase: (a) => { const res = MachineDriverStack.HiddenGateSystem.phraseAlgo(a.secret); return { ok: true, action: 'gate_phrase', ...res }; },
+    gate_status: () => { return { ok: true, action: 'gate_status', status: MachineDriverStack.HiddenGateSystem.status() }; },
+    avatar_partition_status: () => { return { ok: true, action: 'avatar_partition_status', status: MachineDriverStack.AvatarPartitionSystem.status() }; },
+    avatar_base_decode: (a) => { const res = MachineDriverStack.AvatarPartitionSystem.baseDecode(a.encoded || ''); return { ok: true, action: 'avatar_base_decode', ...res }; },
+    avatar_assign_slot: (a) => { const res = MachineDriverStack.AvatarPartitionSystem.assignAvatarToSlot(Number(a.slotIndex), a.avatarId, a.avatarName); return { ok: true, action: 'avatar_assign_slot', ...res }; },
+    avatar_swap: (a) => { const res = MachineDriverStack.AvatarPartitionSystem.swapPartition(Number(a.fromSlot), Number(a.toSlot)); return { ok: true, action: 'avatar_swap', ...res }; },
+    avatar_transition: (a) => { const res = MachineDriverStack.AvatarPartitionSystem.transitionTopsops(a.encoded, a.avatarId, a.avatarName); return { ok: true, action: 'avatar_transition', ...res }; },
+    avatar_query_slot: (a) => { const res = MachineDriverStack.AvatarPartitionSystem.querySlot(Number(a.slotIndex)); return { ok: true, action: 'avatar_query_slot', ...res }; },
+    avatar_discover_tags: (a) => { const res = MachineDriverStack.AvatarPartitionSystem.discoverTags(a.filter); return { ok: true, action: 'avatar_discover_tags', tags: res, count: res.length }; },
+    hash_block_generate: (a) => { const res = MachineDriverStack.HashBlockSystem.generateSavePrintProxy(a.agentTag, a.payload); return { ok: true, action: 'hash_block_generate', ...res, block: res.block }; },
+    hash_block_status: () => { return { ok: true, action: 'hash_block_status', status: MachineDriverStack.HashBlockSystem.status() }; },
+    hash_block_print: (a) => { const res = MachineDriverStack.HashBlockSystem.printToNodeServer(a.block); return { ok: true, action: 'hash_block_print', ...res }; },
+    hash_block_proxy: (a) => { const res = MachineDriverStack.HashBlockSystem.proxyViaAgentTag(a.block, a.agentTag); return { ok: true, action: 'hash_block_proxy', ...res }; },
+  };
+
+  function executeCommand(cmd, args = {}) {
+    const handler = CMD_ROUTER[cmd];
+    if (!handler) {
+      const res = { ok: false, error: 'unknown command: ' + cmd };
+      cmdLog('! ' + cmd + ' -> ' + res.error, 'err');
+      return res;
+    }
+    try {
+      const res = handler(args);
+      cmdLog('> ' + cmd + ' => ' + (res.ok ? 'OK' : 'ERR') + (res.error ? ' ' + res.error : ''), res.ok ? 'result' : 'err');
+      return res;
+    } catch (e) {
+      const res = { ok: false, error: e.message };
+      cmdLog('! ' + cmd + ' -> exception: ' + e.message, 'err');
+      return res;
+    }
+  }
+
+  /* Touch buttons */
+  document.querySelectorAll('.touch-btn').forEach(btn => {
+    btn.onclick = () => executeCommand(btn.getAttribute('data-cmd'), {});
+  });
+    document.getElementById('btn-touch-exec').onclick = () => {
+    const input = document.getElementById('touch-cmd-input');
+    const raw = input.value.trim();
+    if (!raw) return;
+    const parts = raw.split(/\s+/);
+    const cmd = parts[0];
+    const args = {};
+    // naive arg parsing: key=value pairs after cmd
+    for (let i = 1; i < parts.length; i++) {
+      const kv = parts[i].split('=');
+      if (kv.length === 2) args[kv[0]] = kv[1];
+    }
+    executeCommand(cmd, args);
+    input.value = '';
+  };
+  // Enter key shell shortcut: execute command on Return
+  document.getElementById('touch-cmd-input').addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      document.getElementById('btn-touch-exec').click();
+    }
+  });
+
+  /* MCP -> command execution: local model calls tools/call with a command name */
+  const ORIG_MCP_CALL_TOOL = mcpCallTool;
+  mcpCallTool = function(name, args = {}) {
+    // If it's a known command, execute locally (holographic touchscreen combo)
+    if (CMD_ROUTER[name]) {
+      const res = executeCommand(name, args);
+      els.mcpRaw.textContent = JSON.stringify({ jsonrpc:'2.0', result: res }, null, 2);
+      state.lastRaw = els.mcpRaw.textContent;
+      mcpLog(`MCP exec command ${name} => ${res.ok?'OK':'ERR'}`, 'out');
+      return;
+    }
+    ORIG_MCP_CALL_TOOL(name, args);
+  };
+
+  /* MCP server-to-client command request */
+  const ORIG_ONMESSAGE = null; // placeholder
+  // handled inline below in onmessage
+
+  /* Wire MCP onmessage to also route tools/call_request style commands */
+  // (patched into the existing onmessage below)
+
+  /* Auto-connect attempt (non-fatal if no local model server) */
+  setTimeout(() => { mcpConnect(); }, 800);
+}
+
+/* ================= BOOT ================= */
+function boot() {
+  initThree();
+  mechInit();
+  drvInit();
+  drvRenderSpectral();
+  qbitInit();
+  substanceInit();
+  drvRenderSeed();
+  drvRenderTons();
+  drvRenderAsmodius();
+  drvRenderCipher();
+  drvRenderEndorsmet();
+  drvRenderAtomicus();
+  drvRenderArtifact();
+  drvRenderOmnitrix();
+  drvRenderGate();
+  drvRenderAvatar();
+  drvRenderHash();
+  updateAvatarUI();
+  renderSlotSelect();
+  // Default: project first avatar
+  projectAvatar(AVATAR_BLOCKS[0]);
+  wireEvents();
+  els.loading.style.display = 'none';
+  animate();
+}
+
+boot();
+</script>
+</body>
+</html>
